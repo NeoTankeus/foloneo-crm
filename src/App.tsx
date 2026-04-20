@@ -24,16 +24,18 @@ import {
   AlertTriangle,
   CheckCircle2,
   RefreshCw,
+  LogOut,
 } from "lucide-react";
 import { Card, Badge } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { Stat, EmptyState } from "@/components/ui/overlays";
 import { ETAPES, NAV_TITLES, VIEWS_WITH_FILTERS } from "@/lib/constants";
-import { fmtEUR, fmtPct, cx, daysAgo } from "@/lib/helpers";
+import { fmtEUR, fmtPct, cx, daysAgo, initials } from "@/lib/helpers";
 import { calcDevisTotaux } from "@/lib/calculations";
 import { useDemoData } from "@/lib/supabase";
 import { useAppState } from "@/hooks/useAppState";
-import type { AppState, Settings } from "@/types";
+import { useAuth } from "@/hooks/useAuth";
+import type { AppState, Settings, Commercial } from "@/types";
 
 // ============================================================================
 // NAVIGATION ITEMS
@@ -198,18 +200,45 @@ function Sidebar({
         })}
       </nav>
 
-      <div className="p-3 border-t border-white/10">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-[#C9A961] text-[#0B1E3F] flex items-center justify-center font-semibold text-xs">
-            SP
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-xs font-semibold text-white truncate">Stéphane Pitaud</div>
-            <div className="text-[10px] text-slate-400">Dirigeant</div>
+      <SidebarFooter />
+    </aside>
+  );
+}
+
+function SidebarFooter() {
+  const { currentCommercial, signOut, isDemoMode } = useAuth();
+  const c: Commercial | null = currentCommercial;
+  const label = c ? `${c.prenom} ${c.nom}` : "—";
+  const role = c?.role ?? "commercial";
+  const couleur = c?.couleur ?? "#C9A961";
+
+  return (
+    <div className="p-3 border-t border-white/10">
+      <div className="flex items-center gap-2.5">
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs text-[#0B1E3F]"
+          style={{ background: couleur }}
+        >
+          {c ? initials(c.prenom, c.nom) : "?"}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-semibold text-white truncate">{label}</div>
+          <div className="text-[10px] text-slate-400 capitalize">
+            {role}
+            {isDemoMode && " · démo"}
           </div>
         </div>
+        {!isDemoMode && (
+          <button
+            onClick={() => void signOut()}
+            className="p-1.5 rounded-lg text-slate-400 hover:bg-white/5 hover:text-white"
+            title="Se déconnecter"
+          >
+            <LogOut size={14} />
+          </button>
+        )}
       </div>
-    </aside>
+    </div>
   );
 }
 
