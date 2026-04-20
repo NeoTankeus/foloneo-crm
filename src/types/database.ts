@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // ============================================================================
-// TYPES SUPABASE — à régénérer avec `npx supabase gen types typescript --local`
-// après application des migrations
+// TYPES SUPABASE — stub. À régénérer avec `npx supabase gen types typescript --local`
+// après application des migrations. Les `any` sont intentionnels en attendant
+// la génération automatique depuis le schéma Supabase.
 // ============================================================================
 
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];

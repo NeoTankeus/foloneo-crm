@@ -24,13 +24,14 @@ import {
   AlertTriangle,
   CheckCircle2,
 } from "lucide-react";
-import { Button, Card, Badge } from "@/components/ui/primitives";
+import { Card, Badge } from "@/components/ui/primitives";
+import { Button } from "@/components/ui/Button";
 import { Stat, EmptyState } from "@/components/ui/overlays";
 import { DEMO_STATE } from "@/lib/demo-data";
 import { DEFAULT_SETTINGS, ETAPES, NAV_TITLES, VIEWS_WITH_FILTERS } from "@/lib/constants";
 import { fmtEUR, fmtPct, cx, daysAgo } from "@/lib/helpers";
 import { calcDevisTotaux } from "@/lib/calculations";
-import { isSupabaseConfigured, useDemoData } from "@/lib/supabase";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import type { AppState, Settings } from "@/types";
 
 // ============================================================================
@@ -55,7 +56,7 @@ const NAV_ITEMS = [
 // APP
 // ============================================================================
 export default function App() {
-  const [state, setState] = useState<AppState>(DEMO_STATE);
+  const [state] = useState<AppState>(DEMO_STATE);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [view, setView] = useState<string>("dashboard");
   const [sidebarMobile, setSidebarMobile] = useState(false);
@@ -199,7 +200,7 @@ function TopBar({
   onMenu,
   settings,
   updateSettings,
-  showFilters,
+  showFilters: _showFilters,
 }: {
   title: string;
   onMenu: () => void;
