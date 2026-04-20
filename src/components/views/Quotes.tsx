@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Search, FileText, Copy, Eye, Send, CheckCircle2 } from "lucide-react";
 import { Card, Input, Select, Badge } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
@@ -15,6 +15,7 @@ interface Props {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
   settings: Settings;
+  openWizardSignal?: number;
 }
 
 const STATUS_LABELS: Record<QuoteStatus, string> = {
@@ -25,11 +26,16 @@ const STATUS_LABELS: Record<QuoteStatus, string> = {
   perdu: "Perdu",
 };
 
-export function QuotesView({ state, setState, settings }: Props) {
+export function QuotesView({ state, setState, settings, openWizardSignal }: Props) {
   const [wizard, setWizard] = useState<{ open: boolean; quote: Quote | null }>({
     open: false,
     quote: null,
   });
+  useEffect(() => {
+    if (openWizardSignal && openWizardSignal > 0) {
+      setWizard({ open: true, quote: null });
+    }
+  }, [openWizardSignal]);
   const [preview, setPreview] = useState<{ quote: Quote; mode: "achat" | "leasing" } | null>(null);
   const [search, setSearch] = useState<string>("");
   const [status, setStatus] = useState<QuoteStatus | "all">("all");

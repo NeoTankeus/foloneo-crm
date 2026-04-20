@@ -42,6 +42,8 @@ import { InvoicesView } from "@/components/views/Invoices";
 import { TeamView } from "@/components/views/Team";
 import { CalendarView } from "@/components/views/Calendar";
 import { SavView } from "@/components/views/Sav";
+import { SettingsView } from "@/components/views/Settings";
+import { CommandPalette } from "@/components/layout/CommandPalette";
 import type { Settings, Commercial } from "@/types";
 
 type PeriodFilter = "month" | "quarter" | "year" | "6months";
@@ -67,12 +69,26 @@ export default function App() {
   const [sidebarMobile, setSidebarMobile] = useState(false);
   const [commercialFilter, setCommercialFilter] = useState<string | "all">("all");
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("month");
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [newQuoteSignal, setNewQuoteSignal] = useState<number>(0);
 
   useEffect(() => {
     const root = document.documentElement;
     if (state.settings.darkMode) root.classList.add("dark");
     else root.classList.remove("dark");
   }, [state.settings.darkMode]);
+
+  // Ctrl+K / Cmd+K pour ouvrir la palette
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   return (
     <div className={state.settings.darkMode ? "dark" : ""}>
@@ -156,7 +172,12 @@ export default function App() {
             ) : view === "contacts" ? (
               <ContactsView state={state} setState={setState} />
             ) : view === "quotes" ? (
-              <QuotesView state={state} setState={setState} settings={state.settings} />
+              <QuotesView
+                state={state}
+                setState={setState}
+                settings={state.settings}
+                openWizardSignal={newQuoteSignal}
+              />
             ) : view === "catalog" ? (
               <CatalogView state={state} setState={setState} settings={state.settings} />
             ) : view === "maintenance" ? (
@@ -169,12 +190,21 @@ export default function App() {
               <CalendarView state={state} setState={setState} />
             ) : view === "sav" ? (
               <SavView state={state} setState={setState} settings={state.settings} />
+            ) : view === "settings" ? (
+              <SettingsView state={state} setState={setState} reload={reload} />
             ) : (
               <Placeholder view={view} />
             )}
           </main>
         </div>
       </div>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        setView={setView}
+        onNewQuote={() => setNewQuoteSignal((n) => n + 1)}
+      />
     </div>
   );
 }
@@ -350,6 +380,7 @@ function TopBar({
         </button>
 
         <button
+          onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true }))}
           className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
           title="Ctrl+K"
         >
