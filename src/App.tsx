@@ -19,22 +19,19 @@ import {
   Sun,
   Command,
   Menu,
-  TrendingUp,
-  Target,
   AlertTriangle,
-  CheckCircle2,
   RefreshCw,
   LogOut,
 } from "lucide-react";
-import { Card, Badge } from "@/components/ui/primitives";
+import { Select } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
-import { Stat, EmptyState } from "@/components/ui/overlays";
-import { ETAPES, NAV_TITLES, VIEWS_WITH_FILTERS } from "@/lib/constants";
-import { fmtEUR, fmtPct, cx, daysAgo, initials } from "@/lib/helpers";
-import { calcDevisTotaux } from "@/lib/calculations";
+import { EmptyState } from "@/components/ui/overlays";
+import { NAV_TITLES, VIEWS_WITH_FILTERS } from "@/lib/constants";
+import { cx, initials } from "@/lib/helpers";
 import { useDemoData } from "@/lib/supabase";
 import { useAppState } from "@/hooks/useAppState";
 import { useAuth } from "@/hooks/useAuth";
+import { Dashboard } from "@/components/views/Dashboard";
 import { AccountsView } from "@/components/views/Accounts";
 import { ContactsView } from "@/components/views/Contacts";
 import { Pipeline } from "@/components/views/Pipeline";
@@ -45,11 +42,10 @@ import { InvoicesView } from "@/components/views/Invoices";
 import { TeamView } from "@/components/views/Team";
 import { CalendarView } from "@/components/views/Calendar";
 import { SavView } from "@/components/views/Sav";
-import type { AppState, Settings, Commercial } from "@/types";
+import type { Settings, Commercial } from "@/types";
 
-// ============================================================================
-// NAVIGATION ITEMS
-// ============================================================================
+type PeriodFilter = "month" | "quarter" | "year" | "6months";
+
 const NAV_ITEMS = [
   { id: "dashboard", label: "Tableau de bord", icon: LayoutDashboard },
   { id: "pipeline", label: "Pipeline", icon: Briefcase },
@@ -65,15 +61,13 @@ const NAV_ITEMS = [
   { id: "settings", label: "Paramètres", icon: SettingsIcon },
 ];
 
-// ============================================================================
-// APP
-// ============================================================================
 export default function App() {
   const { state, setState, loading, error, reload, updateSettingsLocal } = useAppState();
   const [view, setView] = useState<string>("dashboard");
   const [sidebarMobile, setSidebarMobile] = useState(false);
+  const [commercialFilter, setCommercialFilter] = useState<string | "all">("all");
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("month");
 
-  // Dark mode toggle
   useEffect(() => {
     const root = document.documentElement;
     if (state.settings.darkMode) root.classList.add("dark");
@@ -111,17 +105,21 @@ export default function App() {
             settings={state.settings}
             updateSettings={updateSettingsLocal}
             showFilters={VIEWS_WITH_FILTERS.has(view)}
+            commerciaux={state.commerciaux}
+            commercialFilter={commercialFilter}
+            setCommercialFilter={setCommercialFilter}
+            periodFilter={periodFilter}
+            setPeriodFilter={setPeriodFilter}
           />
 
           {useDemoData && (
             <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900 px-4 py-2 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
               <AlertTriangle size={14} />
-              Mode démo — les modifications ne sont pas persistées. Passe
-              {" "}
+              Mode démo — les modifications ne sont pas persistées. Passe{" "}
               <code className="font-mono bg-amber-100 dark:bg-amber-900/50 px-1 rounded">
                 VITE_USE_DEMO_DATA=false
-              </code>
-              {" "}dans .env.local une fois les migrations Supabase appliquées.
+              </code>{" "}
+              dans .env.local une fois les migrations Supabase appliquées.
             </div>
           )}
 
@@ -145,7 +143,12 @@ export default function App() {
                 Chargement…
               </div>
             ) : view === "dashboard" ? (
-              <Dashboard state={state} settings={state.settings} />
+              <Dashboard
+                state={state}
+                settings={state.settings}
+                commercialFilter={commercialFilter}
+                periodFilter={periodFilter}
+              />
             ) : view === "pipeline" ? (
               <Pipeline state={state} setState={setState} />
             ) : view === "accounts" ? (
@@ -176,9 +179,6 @@ export default function App() {
   );
 }
 
-// ============================================================================
-// SIDEBAR
-// ============================================================================
 function Sidebar({
   view,
   setView,
@@ -272,21 +272,28 @@ function SidebarFooter() {
   );
 }
 
-// ============================================================================
-// TOPBAR
-// ============================================================================
 function TopBar({
   title,
   onMenu,
   settings,
   updateSettings,
-  showFilters: _showFilters,
+  showFilters,
+  commerciaux,
+  commercialFilter,
+  setCommercialFilter,
+  periodFilter,
+  setPeriodFilter,
 }: {
   title: string;
   onMenu: () => void;
   settings: Settings;
   updateSettings: (p: Partial<Settings>) => void;
   showFilters: boolean;
+  commerciaux: Commercial[];
+  commercialFilter: string | "all";
+  setCommercialFilter: (v: string | "all") => void;
+  periodFilter: PeriodFilter;
+  setPeriodFilter: (v: PeriodFilter) => void;
 }) {
   return (
     <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center px-3 md:px-5 gap-3 sticky top-0 z-30 flex-shrink-0">
@@ -299,6 +306,33 @@ function TopBar({
       <h1 className="text-base md:text-lg font-semibold text-slate-900 dark:text-slate-100 truncate">
         {title}
       </h1>
+
+      {showFilters && (
+        <div className="hidden md:flex items-center gap-2 ml-4">
+          <Select
+            value={commercialFilter}
+            onChange={(e) => setCommercialFilter(e.target.value)}
+            className="h-8 text-xs py-0"
+          >
+            <option value="all">Tous commerciaux</option>
+            {commerciaux.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.prenom} {c.nom}
+              </option>
+            ))}
+          </Select>
+          <Select
+            value={periodFilter}
+            onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)}
+            className="h-8 text-xs py-0"
+          >
+            <option value="month">Ce mois</option>
+            <option value="quarter">Ce trimestre</option>
+            <option value="year">Cette année</option>
+            <option value="6months">6 derniers mois</option>
+          </Select>
+        </div>
+      )}
 
       <div className="ml-auto flex items-center gap-1.5 md:gap-2">
         <button
@@ -332,138 +366,6 @@ function TopBar({
   );
 }
 
-// ============================================================================
-// DASHBOARD — minimal, enrichi au Module 8
-// ============================================================================
-function Dashboard({ state, settings }: { state: AppState; settings: Settings }) {
-  const { deals, quotes, invoices, contrats } = state;
-
-  const pipelineValeur = deals
-    .filter((d) => d.etape !== "signe" && d.etape !== "perdu")
-    .reduce((s, d) => s + (d.valeur * d.probabilite) / 100, 0);
-
-  const signes = deals.filter((d) => d.etape === "signe");
-  const caSigne = signes.reduce((s, d) => s + d.valeur, 0);
-
-  const closed = deals.filter((d) => d.etape === "signe" || d.etape === "perdu");
-  const tauxTransfo = closed.length > 0 ? signes.length / closed.length : 0;
-
-  const devisARelancer = quotes.filter(
-    (q) => q.status === "envoye" && daysAgo(q.sentAt || q.createdAt) > 15
-  ).length;
-
-  const facturesRetard = invoices.filter((f) => f.status === "retard").length;
-  const contratsARenouveler = contrats.filter((c) => {
-    const jours = Math.ceil((new Date(c.dateFin).getTime() - Date.now()) / 86_400_000);
-    return jours <= 60 && jours > 0;
-  }).length;
-
-  const pipelineByEtape = ETAPES.map((e) => ({
-    ...e,
-    count: deals.filter((d) => d.etape === e.id).length,
-    valeur: deals.filter((d) => d.etape === e.id).reduce((s, d) => s + d.valeur, 0),
-  }));
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat
-          label="Pipeline pondéré"
-          value={fmtEUR(pipelineValeur)}
-          icon={TrendingUp}
-          tone="gold"
-          sub={`${deals.filter((d) => d.etape !== "signe" && d.etape !== "perdu").length} affaires`}
-        />
-        <Stat
-          label="CA signé"
-          value={fmtEUR(caSigne)}
-          icon={CheckCircle2}
-          tone="emerald"
-          sub={`${signes.length} contrats`}
-        />
-        <Stat
-          label="Taux transfo"
-          value={fmtPct(tauxTransfo)}
-          icon={Target}
-          tone="blue"
-          sub={`sur ${closed.length} affaires closes`}
-        />
-        <Stat
-          label="À traiter"
-          value={devisARelancer + facturesRetard + contratsARenouveler}
-          icon={AlertTriangle}
-          tone="amber"
-          sub="devis / factures / contrats"
-        />
-      </div>
-
-      <Card className="p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-slate-900 dark:text-slate-100">Pipeline par étape</h2>
-          <Badge tone="slate">{deals.length} affaires total</Badge>
-        </div>
-        <div className="space-y-3">
-          {pipelineByEtape.map((e) => (
-            <div key={e.id} className="flex items-center gap-3">
-              <div
-                className="w-3 h-3 rounded-full flex-shrink-0"
-                style={{ background: e.color }}
-              />
-              <div className="text-sm font-medium text-slate-700 dark:text-slate-300 w-32">
-                {e.label}
-              </div>
-              <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{
-                    width: `${Math.min(100, (e.count / Math.max(...pipelineByEtape.map((x) => x.count), 1)) * 100)}%`,
-                    background: e.color,
-                  }}
-                />
-              </div>
-              <div className="text-sm text-slate-500 w-16 text-right tabular-nums">{e.count}</div>
-              <div className="text-sm font-medium w-24 text-right tabular-nums text-slate-900 dark:text-slate-100">
-                {fmtEUR(e.valeur)}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <Card className="p-5">
-        <h2 className="font-semibold text-slate-900 dark:text-slate-100 mb-3">Devis récents</h2>
-        <div className="space-y-2">
-          {quotes.slice(0, 5).map((q) => {
-            const acc = state.accounts.find((a) => a.id === q.accountId);
-            const totaux = calcDevisTotaux(q, settings, state.products);
-            return (
-              <div
-                key={q.id}
-                className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50"
-              >
-                <div className="min-w-0">
-                  <div className="font-medium text-sm text-slate-900 dark:text-slate-100">
-                    {q.numero}
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    {acc?.raisonSociale} — {fmtEUR(totaux.totalHT)} HT
-                  </div>
-                </div>
-                {q.status === "signe_achat" && <Badge tone="emerald">Signé</Badge>}
-                {q.status === "envoye" && <Badge tone="violet">Envoyé</Badge>}
-                {q.status === "brouillon" && <Badge tone="slate">Brouillon</Badge>}
-              </div>
-            );
-          })}
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// ============================================================================
-// PLACEHOLDER pour les vues non encore reconstruites
-// ============================================================================
 function Placeholder({ view }: { view: string }) {
   return (
     <div className="flex items-center justify-center h-full">
