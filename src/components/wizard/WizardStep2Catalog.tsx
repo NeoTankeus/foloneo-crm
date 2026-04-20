@@ -17,6 +17,11 @@ export function WizardStep2Catalog({ draft, setDraft, state, settings }: Props) 
   const [showProducts, setShowProducts] = useState(false);
   const [showPacks, setShowPacks] = useState(false);
   const [searchProducts, setSearchProducts] = useState<string>("");
+  // Quantite en cours par produit dans le selecteur (avant ajout)
+  const [qtyByProduct, setQtyByProduct] = useState<Record<string, number>>({});
+  const getQty = (id: string) => qtyByProduct[id] ?? 1;
+  const setQty = (id: string, q: number) =>
+    setQtyByProduct((m) => ({ ...m, [id]: Math.max(1, q) }));
 
   const filteredProducts = useMemo(() => {
     const q = searchProducts.trim().toLowerCase();
@@ -28,16 +33,33 @@ export function WizardStep2Catalog({ draft, setDraft, state, settings }: Props) 
     });
   }, [state.products, searchProducts, settings.clientMode]);
 
-  function addProduct(p: Product) {
-    const line: QuoteLine = {
-      id: uid("ql"),
-      productId: p.id,
-      libelle: settings.clientMode ? p.libelleCommercial : p.libelleInterne,
-      quantite: 1,
-      prixAchatHT: p.prixAchatHT,
-      prixVenteHT: p.prixVenteHT,
-    };
-    setDraft((d) => ({ ...d, lignes: [...d.lignes, line] }));
+  function addProduct(p: Product, quantite = 1) {
+    const existing = draft.lignes.find((l) => l.productId === p.id);
+    if (existing) {
+      // Si le produit est deja dans le devis, on cumule les quantites
+      setDraft((d) => ({
+        ...d,
+        lignes: d.lignes.map((l) =>
+          l.id === existing.id ? { ...l, quantite: l.quantite + quantite } : l
+        ),
+      }));
+    } else {
+      const line: QuoteLine = {
+        id: uid("ql"),
+        productId: p.id,
+        libelle: settings.clientMode ? p.libelleCommercial : p.libelleInterne,
+        quantite,
+        prixAchatHT: p.prixAchatHT,
+        prixVenteHT: p.prixVenteHT,
+      };
+      setDraft((d) => ({ ...d, lignes: [...d.lignes, line] }));
+    }
+    // Reset la quantite du selecteur apres ajout
+    setQtyByProduct((m) => {
+      const copy = { ...m };
+      delete copy[p.id];
+      return copy;
+    });
   }
 
   function addPack(packId: string) {
@@ -141,33 +163,70 @@ export function WizardStep2Catalog({ draft, setDraft, state, settings }: Props) 
               className="pl-9"
             />
           </div>
-          <div className="max-h-64 overflow-y-auto space-y-1">
-            {filteredProducts.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => addProduct(p)}
-                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 text-left"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-                    {settings.clientMode ? p.libelleCommercial : p.libelleInterne}
+          <div className="max-h-80 overflow-y-auto space-y-1">
+            {filteredProducts.map((p) => {
+              const qty = getQty(p.id);
+              return (
+                <div
+                  key={p.id}
+                  className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                      {settings.clientMode ? p.libelleCommercial : p.libelleInterne}
+                    </div>
+                    <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                      {!settings.clientMode && (
+                        <>
+                          <Badge tone="slate">{p.marque}</Badge>
+                          <span>{p.refFabricant}</span>
+                        </>
+                      )}
+                      <span className="tabular-nums">
+                        {fmtEUR(p.prixVenteHT)} HT
+                        {!settings.clientMode && ` · achat ${fmtEUR(p.prixAchatHT)}`}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-[11px] text-slate-500 flex items-center gap-2">
-                    {!settings.clientMode && (
-                      <>
-                        <Badge tone="slate">{p.marque}</Badge>
-                        <span>{p.refFabricant}</span>
-                      </>
-                    )}
-                    <span className="tabular-nums">
-                      {fmtEUR(p.prixVenteHT)} HT
-                      {!settings.clientMode && ` · achat ${fmtEUR(p.prixAchatHT)}`}
-                    </span>
+                  {/* Stepper quantite */}
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => setQty(p.id, qty - 1)}
+                      disabled={qty <= 1}
+                      className="w-7 h-7 rounded-md border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 flex items-center justify-center"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      value={qty}
+                      onChange={(e) => setQty(p.id, Number(e.target.value) || 1)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addProduct(p, qty);
+                        }
+                      }}
+                      className="w-12 h-7 text-center text-xs border border-slate-200 dark:border-slate-700 rounded-md bg-white dark:bg-slate-900 tabular-nums"
+                    />
+                    <button
+                      onClick={() => setQty(p.id, qty + 1)}
+                      className="w-7 h-7 rounded-md border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center"
+                    >
+                      +
+                    </button>
                   </div>
+                  <button
+                    onClick={() => addProduct(p, qty)}
+                    className="inline-flex items-center gap-1 px-2.5 h-7 rounded-md bg-[#C9A961] text-[#0B1E3F] text-xs font-semibold hover:bg-[#D4B570] flex-shrink-0"
+                    title={`Ajouter ${qty} × ${settings.clientMode ? p.libelleCommercial : p.libelleInterne}`}
+                  >
+                    <Plus size={12} /> Ajouter
+                  </button>
                 </div>
-                <Plus size={14} className="text-[#C9A961]" />
-              </button>
-            ))}
+              );
+            })}
             {filteredProducts.length === 0 && (
               <div className="text-xs text-slate-500 text-center py-4">Aucun produit</div>
             )}
