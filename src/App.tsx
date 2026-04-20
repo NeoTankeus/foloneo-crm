@@ -39,6 +39,7 @@ import { AccountsView } from "@/components/views/Accounts";
 import { ContactsView } from "@/components/views/Contacts";
 import { Pipeline } from "@/components/views/Pipeline";
 import { QuotesView } from "@/components/views/Quotes";
+import { CatalogView } from "@/components/views/Catalog";
 import type { AppState, Settings, Commercial } from "@/types";
 
 // ============================================================================
@@ -148,6 +149,8 @@ export default function App() {
               <ContactsView state={state} setState={setState} />
             ) : view === "quotes" ? (
               <QuotesView state={state} setState={setState} settings={state.settings} />
+            ) : view === "catalog" ? (
+              <CatalogView state={state} setState={setState} settings={state.settings} />
             ) : (
               <Placeholder view={view} />
             )}
