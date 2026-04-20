@@ -39,6 +39,10 @@ const fromRow = (r: any): Quote => ({
   fraisDeplacement: Number(r.frais_deplacement),
   modeAchat: { maintenance: r.niveau_maintenance },
   modeLeasing: { duree: Number(r.duree_leasing) as 36 | 48 | 60 },
+  mensualiteLeasingOverride:
+    r.mensualite_leasing_override !== null && r.mensualite_leasing_override !== undefined
+      ? Number(r.mensualite_leasing_override)
+      : null,
   status: r.status,
   formuleChoisie: r.formule_choisie ?? null,
   typeSite: r.type_site ?? undefined,
@@ -71,6 +75,8 @@ const toRow = (q: Partial<Quote>): Record<string, unknown> => {
   };
   if (q.modeAchat) row.niveau_maintenance = q.modeAchat.maintenance;
   if (q.modeLeasing) row.duree_leasing = q.modeLeasing.duree;
+  if (q.mensualiteLeasingOverride !== undefined)
+    row.mensualite_leasing_override = q.mensualiteLeasingOverride;
   return row;
 };
 

@@ -18,6 +18,13 @@ const fromRow = (r: any, clientMode = true, darkMode = false): Settings => ({
     48: Number(r.coef_mensuel_48),
     60: Number(r.coef_mensuel_60),
   },
+  coefMensuelPetit: {
+    // Fallback sur la grille "grand" si la colonne n'existe pas encore (migration 003 pas appliquee)
+    36: r.coef_mensuel_petit_36 !== undefined && r.coef_mensuel_petit_36 !== null ? Number(r.coef_mensuel_petit_36) : Number(r.coef_mensuel_36),
+    48: r.coef_mensuel_petit_48 !== undefined && r.coef_mensuel_petit_48 !== null ? Number(r.coef_mensuel_petit_48) : Number(r.coef_mensuel_48),
+    60: r.coef_mensuel_petit_60 !== undefined && r.coef_mensuel_petit_60 !== null ? Number(r.coef_mensuel_petit_60) : Number(r.coef_mensuel_60),
+  },
+  seuilLeasing: r.seuil_leasing !== undefined && r.seuil_leasing !== null ? Number(r.seuil_leasing) : 10000,
   provisionEvolutions: Number(r.provision_evolutions),
   tauxMO: Number(r.taux_mo),
   fraisDeplacement: Number(r.frais_deplacement),
@@ -51,6 +58,12 @@ const toRow = (s: Partial<Settings>): Record<string, unknown> => {
     row.coef_mensuel_48 = s.coefMensuel[48];
     row.coef_mensuel_60 = s.coefMensuel[60];
   }
+  if (s.coefMensuelPetit) {
+    row.coef_mensuel_petit_36 = s.coefMensuelPetit[36];
+    row.coef_mensuel_petit_48 = s.coefMensuelPetit[48];
+    row.coef_mensuel_petit_60 = s.coefMensuelPetit[60];
+  }
+  if (s.seuilLeasing !== undefined) row.seuil_leasing = s.seuilLeasing;
   if (s.provisionEvolutions !== undefined) row.provision_evolutions = s.provisionEvolutions;
   if (s.tauxMO !== undefined) row.taux_mo = s.tauxMO;
   if (s.fraisDeplacement !== undefined) row.frais_deplacement = s.fraisDeplacement;

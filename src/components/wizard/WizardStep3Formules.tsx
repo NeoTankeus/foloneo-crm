@@ -1,5 +1,5 @@
-import { CheckCircle2, Wrench, CreditCard, Repeat } from "lucide-react";
-import { Card, Badge } from "@/components/ui/primitives";
+import { CheckCircle2, Wrench, CreditCard, Repeat, Edit2, RotateCcw } from "lucide-react";
+import { Card, Badge, Input } from "@/components/ui/primitives";
 import { NIVEAUX_MAINTENANCE } from "@/lib/constants";
 import { fmtEUR, fmtEURc, cx } from "@/lib/helpers";
 import { calcDevisTotaux } from "@/lib/calculations";
@@ -17,6 +17,14 @@ interface Props {
 // =============================================================================
 export function WizardStep3Formules({ draft, setDraft, state, settings }: Props) {
   const totaux = calcDevisTotaux(draft, settings, state.products);
+  // Mensualite auto, recalculee sans l'override pour toujours l'afficher a cote
+  const mensualiteAuto = calcDevisTotaux(
+    { ...draft, mensualiteLeasingOverride: null },
+    settings,
+    state.products
+  ).mensualiteTotale;
+  const hasOverride =
+    typeof draft.mensualiteLeasingOverride === "number" && draft.mensualiteLeasingOverride > 0;
 
   function setNiveau(n: NiveauMaintenance) {
     setDraft((d) => ({ ...d, modeAchat: { maintenance: n } }));
@@ -24,6 +32,11 @@ export function WizardStep3Formules({ draft, setDraft, state, settings }: Props)
   function setDuree(duree: 36 | 48 | 60) {
     setDraft((d) => ({ ...d, modeLeasing: { duree } }));
   }
+  function setOverride(v: number | null) {
+    setDraft((d) => ({ ...d, mensualiteLeasingOverride: v }));
+  }
+  const grille =
+    totaux.totalHT < settings.seuilLeasing ? "petit (CA < seuil)" : "grand (CA ≥ seuil)";
 
   return (
     <div className="space-y-4">
@@ -160,23 +173,50 @@ export function WizardStep3Formules({ draft, setDraft, state, settings }: Props)
               })}
             </div>
           </div>
-          {/* Breakdown : visible UNIQUEMENT en mode interne */}
+          {/* Override manuel */}
+          <div className="mb-3">
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <Edit2 size={10} />
+                Forcer la mensualité (€/mois)
+              </label>
+              {hasOverride && (
+                <button
+                  onClick={() => setOverride(null)}
+                  className="text-[10px] text-slate-400 hover:text-slate-600 inline-flex items-center gap-1"
+                  title="Revenir au calcul automatique"
+                >
+                  <RotateCcw size={10} /> Auto
+                </button>
+              )}
+            </div>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={draft.mensualiteLeasingOverride ?? ""}
+              onChange={(e) =>
+                setOverride(e.target.value === "" ? null : Number(e.target.value))
+              }
+              placeholder={`Auto : ${Math.round(mensualiteAuto)} €`}
+            />
+            {hasOverride && (
+              <div className="text-[10px] text-slate-500 mt-1">
+                Calcul auto : {fmtEUR(mensualiteAuto)} · forcé à {fmtEUR(totaux.mensualiteTotale)}
+              </div>
+            )}
+          </div>
+          {/* Detail interne (plus de breakdown, tout est dans le coef full-options) */}
           {!settings.clientMode && (
             <div className="space-y-1 text-xs mb-3 p-2 rounded-lg bg-slate-50 dark:bg-slate-900">
               <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                Breakdown interne
+                Détail interne (full options)
               </div>
-              <Row label="Matériel / mois" value={fmtEURc(totaux.mensualiteMateriel)} />
-              <Row label="Maintenance / mois" value={fmtEURc(totaux.mensualiteMaintenance)} />
-              <Row label="Évolutions / mois" value={fmtEURc(totaux.mensualiteEvolutions)} />
-              <hr className="border-slate-200 dark:border-slate-700" />
-              <Row label="Total / mois" value={fmtEURc(totaux.mensualiteTotale)} bold />
+              <Row label="Mensualité auto" value={fmtEURc(mensualiteAuto)} />
+              <Row label="Mensualité retenue" value={fmtEURc(totaux.mensualiteTotale)} bold />
               <Row label={`Total ${totaux.duree} mois`} value={fmtEURc(totaux.totalLeasing)} dim />
-              <Row
-                label="Commission"
-                value={fmtEURc(totaux.commissionLeasing)}
-                dim
-              />
+              <Row label={`Grille : ${grille}`} value={`×${totaux.totalHT < settings.seuilLeasing ? settings.coefMensuelPetit[totaux.duree] : settings.coefMensuel[totaux.duree]}`} dim />
+              <Row label="Commission" value={fmtEURc(totaux.commissionLeasing)} dim />
             </div>
           )}
           <ul className="text-xs space-y-1">

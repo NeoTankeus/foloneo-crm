@@ -28,6 +28,10 @@ export function SettingsView({ state, setState, reload }: Props) {
     setForm((s) => ({ ...s, coefMensuel: { ...s.coefMensuel, [k]: v } }));
   }
 
+  function patchCoefMensuelPetit(k: 36 | 48 | 60, v: number) {
+    setForm((s) => ({ ...s, coefMensuelPetit: { ...s.coefMensuelPetit, [k]: v } }));
+  }
+
   function patchCommission(k: keyof Settings["commissionTaux"], v: number) {
     setForm((s) => ({ ...s, commissionTaux: { ...s.commissionTaux, [k]: v } }));
   }
@@ -171,46 +175,101 @@ export function SettingsView({ state, setState, reload }: Props) {
         </div>
       </Card>
 
-      {/* Coefficients leasing */}
+      {/* Coefficients leasing — deux grilles selon le seuil CA */}
       <Card className="p-5">
         <div className="flex items-center gap-2 mb-3">
           <Calculator size={16} className="text-[#C9A961]" />
-          <h2 className="font-semibold">Coefficients leasing (mensuel ÷ totalHT)</h2>
+          <h2 className="font-semibold">Coefficients leasing "full options"</h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="text-[11px] text-slate-500 mb-4">
+          Mensualité = totalHT × coef selon la durée. Grille appliquée selon le seuil CA
+          ci-dessous. Full options : matériel + maintenance + évolutions inclus.
+        </div>
+        <div className="mb-3">
           <Input
-            label="Coef 36 mois"
+            label="Seuil CA de bascule entre les deux grilles (€)"
             type="number"
             min={0}
-            step="0.0001"
-            value={form.coefMensuel[36]}
-            onChange={(e) => patchCoefMensuel(36, Number(e.target.value))}
+            step="100"
+            value={form.seuilLeasing}
+            onChange={(e) => patch("seuilLeasing", Number(e.target.value))}
+            hint={`En-dessous : grille "petit CA" · à partir de : grille "grand CA"`}
           />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900">
+            <div className="text-xs font-semibold text-amber-900 dark:text-amber-300 mb-2">
+              Grille petit CA (&lt; {form.seuilLeasing} €) — taux ~7 %
+            </div>
+            <div className="space-y-2">
+              <Input
+                label="Coef 36 mois"
+                type="number"
+                min={0}
+                step="0.00001"
+                value={form.coefMensuelPetit[36]}
+                onChange={(e) => patchCoefMensuelPetit(36, Number(e.target.value))}
+              />
+              <Input
+                label="Coef 48 mois"
+                type="number"
+                min={0}
+                step="0.00001"
+                value={form.coefMensuelPetit[48]}
+                onChange={(e) => patchCoefMensuelPetit(48, Number(e.target.value))}
+              />
+              <Input
+                label="Coef 60 mois"
+                type="number"
+                min={0}
+                step="0.00001"
+                value={form.coefMensuelPetit[60]}
+                onChange={(e) => patchCoefMensuelPetit(60, Number(e.target.value))}
+              />
+            </div>
+          </div>
+          <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900">
+            <div className="text-xs font-semibold text-emerald-900 dark:text-emerald-300 mb-2">
+              Grille grand CA (≥ {form.seuilLeasing} €) — taux ~5 %
+            </div>
+            <div className="space-y-2">
+              <Input
+                label="Coef 36 mois"
+                type="number"
+                min={0}
+                step="0.00001"
+                value={form.coefMensuel[36]}
+                onChange={(e) => patchCoefMensuel(36, Number(e.target.value))}
+              />
+              <Input
+                label="Coef 48 mois"
+                type="number"
+                min={0}
+                step="0.00001"
+                value={form.coefMensuel[48]}
+                onChange={(e) => patchCoefMensuel(48, Number(e.target.value))}
+              />
+              <Input
+                label="Coef 60 mois"
+                type="number"
+                min={0}
+                step="0.00001"
+                value={form.coefMensuel[60]}
+                onChange={(e) => patchCoefMensuel(60, Number(e.target.value))}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="mt-3">
           <Input
-            label="Coef 48 mois"
-            type="number"
-            min={0}
-            step="0.0001"
-            value={form.coefMensuel[48]}
-            onChange={(e) => patchCoefMensuel(48, Number(e.target.value))}
-          />
-          <Input
-            label="Coef 60 mois"
-            type="number"
-            min={0}
-            step="0.0001"
-            value={form.coefMensuel[60]}
-            onChange={(e) => patchCoefMensuel(60, Number(e.target.value))}
-          />
-          <Input
-            label="Provision évolutions (annuel)"
+            label="Provision évolutions (annuel, legacy)"
             type="number"
             min={0}
             max={1}
             step="0.01"
             value={form.provisionEvolutions}
             onChange={(e) => patch("provisionEvolutions", Number(e.target.value))}
-            hint="Défaut 0.08 = 8 %"
+            hint="Non utilisé en formule full-options, conservé pour historique"
           />
         </div>
       </Card>

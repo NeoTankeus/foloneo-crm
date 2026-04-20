@@ -108,16 +108,23 @@ export function calcDevisTotaux(
   const niveauAchat = NIVEAUX_MAINTENANCE[niveauAchatKey];
   const maintenanceAnnuelle = totalHT * niveauAchat.prixAnnuelRatio;
 
-  // --- Leasing ---
+  // --- Leasing : formule "full options" (tout inclus dans le coef mensuel) ---
+  // Deux grilles de coefs selon le seuil (petit CA vs grand CA), editables en Settings.
+  // Un override manuel sur le devis (mensualiteLeasingOverride) ecrase le calcul auto.
   const duree = (devis.modeLeasing?.duree || 48) as 36 | 48 | 60;
-  const coefMens = settings.coefMensuel[duree];
-  const niveauLeasing = NIVEAUX_MAINTENANCE.confort; // niveau confort inclus par défaut en leasing
+  const grille = totalHT < settings.seuilLeasing ? settings.coefMensuelPetit : settings.coefMensuel;
+  const coefMens = grille[duree];
+  const niveauLeasing = NIVEAUX_MAINTENANCE.confort;
   const mensualiteMateriel = totalHT * coefMens;
-  const mensualiteMaintenance = (totalHT * niveauLeasing.prixAnnuelRatio) / 12;
-  const mensualiteEvolutions =
-    (totalHT * settings.provisionEvolutions) / 12;
+  // Maintenance et evolutions sont INCLUSES dans le coef full-options -> on les met a 0
+  // pour eviter un double comptage dans les affichages qui les montrent separement.
+  const mensualiteMaintenance = 0;
+  const mensualiteEvolutions = 0;
+  const mensualiteCalculee = mensualiteMateriel;
   const mensualiteTotale =
-    mensualiteMateriel + mensualiteMaintenance + mensualiteEvolutions;
+    typeof devis.mensualiteLeasingOverride === "number" && devis.mensualiteLeasingOverride > 0
+      ? devis.mensualiteLeasingOverride
+      : mensualiteCalculee;
   const totalLeasing = mensualiteTotale * duree;
 
   // --- Commissions ---

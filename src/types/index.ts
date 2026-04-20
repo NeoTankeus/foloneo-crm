@@ -122,6 +122,7 @@ export interface Quote {
   fraisDeplacement: number;
   modeAchat: { maintenance: NiveauMaintenance };
   modeLeasing: { duree: 36 | 48 | 60 };
+  mensualiteLeasingOverride?: number | null;
   status: QuoteStatus;
   formuleChoisie: FormuleChoisie;
   typeSite?: string;
@@ -201,7 +202,12 @@ export interface Settings {
   coefDahua: number;
   dahuaDiv: number;
   coefCategorieDefault: number;
+  // Grille leasing >= seuil (ex: CA >= 10 000 EUR)
   coefMensuel: { 36: number; 48: number; 60: number };
+  // Grille leasing < seuil (petits CA)
+  coefMensuelPetit: { 36: number; 48: number; 60: number };
+  // Seuil en EUR qui separe les deux grilles
+  seuilLeasing: number;
   provisionEvolutions: number;
   tauxMO: number;
   fraisDeplacement: number;
