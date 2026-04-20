@@ -38,6 +38,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { AccountsView } from "@/components/views/Accounts";
 import { ContactsView } from "@/components/views/Contacts";
 import { Pipeline } from "@/components/views/Pipeline";
+import { QuotesView } from "@/components/views/Quotes";
 import type { AppState, Settings, Commercial } from "@/types";
 
 // ============================================================================
@@ -145,6 +146,8 @@ export default function App() {
               <AccountsView state={state} setState={setState} />
             ) : view === "contacts" ? (
               <ContactsView state={state} setState={setState} />
+            ) : view === "quotes" ? (
+              <QuotesView state={state} setState={setState} settings={state.settings} />
             ) : (
               <Placeholder view={view} />
             )}
