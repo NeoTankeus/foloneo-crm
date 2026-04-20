@@ -42,6 +42,9 @@ import { QuotesView } from "@/components/views/Quotes";
 import { CatalogView } from "@/components/views/Catalog";
 import { MaintenanceView } from "@/components/views/Maintenance";
 import { InvoicesView } from "@/components/views/Invoices";
+import { TeamView } from "@/components/views/Team";
+import { CalendarView } from "@/components/views/Calendar";
+import { SavView } from "@/components/views/Sav";
 import type { AppState, Settings, Commercial } from "@/types";
 
 // ============================================================================
@@ -157,6 +160,12 @@ export default function App() {
               <MaintenanceView state={state} setState={setState} />
             ) : view === "invoices" ? (
               <InvoicesView state={state} setState={setState} settings={state.settings} />
+            ) : view === "team" ? (
+              <TeamView state={state} setState={setState} settings={state.settings} />
+            ) : view === "calendar" ? (
+              <CalendarView state={state} setState={setState} />
+            ) : view === "sav" ? (
+              <SavView state={state} setState={setState} settings={state.settings} />
             ) : (
               <Placeholder view={view} />
             )}
