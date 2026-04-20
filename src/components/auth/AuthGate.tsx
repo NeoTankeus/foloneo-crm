@@ -177,10 +177,12 @@ function LoginScreen({
   initialEmail: string;
   setInitialEmail: (v: string) => void;
 }) {
+  const [mode, setMode] = useState<"password" | "magic">("password");
+  const [password, setPassword] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function submit(e: React.FormEvent) {
+  async function submitMagic(e: React.FormEvent) {
     e.preventDefault();
     if (!supabase) return;
     setLoading(true);
@@ -199,13 +201,55 @@ function LoginScreen({
     }
   }
 
+  async function submitPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!supabase) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: initialEmail,
+        password,
+      });
+      if (error) throw error;
+      // onAuthStateChange dans SupabaseAuthGate se chargera du reste
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Email ou mot de passe incorrect");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <AuthFrame>
       <h1 className="text-lg font-semibold mb-1">Connexion</h1>
-      <p className="text-sm text-slate-500 mb-5">
-        Entre ton email Foloneo — tu recevras un lien magique pour te connecter.
-      </p>
-      {sent ? (
+      <p className="text-sm text-slate-500 mb-4">Accès au CRM FOLONEO.</p>
+
+      {/* Toggle mode */}
+      <div className="flex gap-1 mb-4 p-1 rounded-lg bg-slate-100 dark:bg-slate-800">
+        <button
+          onClick={() => setMode("password")}
+          className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-colors ${
+            mode === "password"
+              ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm"
+              : "text-slate-500"
+          }`}
+        >
+          Mot de passe
+        </button>
+        <button
+          onClick={() => setMode("magic")}
+          className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-colors ${
+            mode === "magic"
+              ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm"
+              : "text-slate-500"
+          }`}
+        >
+          Lien magique
+        </button>
+      </div>
+
+      {sent && mode === "magic" ? (
         <div className="space-y-4">
           <div className="flex items-start gap-3 p-3 rounded-lg bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300 text-sm">
             <Mail size={16} className="mt-0.5 flex-shrink-0" />
@@ -222,11 +266,49 @@ function LoginScreen({
               onLinkSent();
             }}
           >
-            Renvoyer avec un autre email
+            Renvoyer
           </Button>
         </div>
+      ) : mode === "password" ? (
+        <form onSubmit={submitPassword} className="space-y-3">
+          <Input
+            label="Email"
+            type="email"
+            required
+            value={initialEmail}
+            onChange={(e) => setInitialEmail(e.target.value)}
+            placeholder="prenom.nom@foloneo.fr"
+            autoFocus
+          />
+          <Input
+            label="Mot de passe"
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+          />
+          {error && (
+            <div className="text-xs text-red-600 flex items-center gap-1">
+              <AlertTriangle size={12} /> {error}
+            </div>
+          )}
+          <Button
+            type="submit"
+            variant="gold"
+            size="md"
+            icon={LogIn}
+            className="w-full"
+            disabled={loading || !initialEmail || !password}
+          >
+            {loading ? "Connexion…" : "Se connecter"}
+          </Button>
+          <div className="text-[11px] text-slate-500 text-center pt-1">
+            Le compte doit être créé au préalable dans Supabase (Authentication → Users).
+          </div>
+        </form>
       ) : (
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={submitMagic} className="space-y-3">
           <Input
             label="Email"
             type="email"
