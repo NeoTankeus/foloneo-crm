@@ -12,4 +12,8 @@ export const supabase: SupabaseClient<Database> | null = isSupabaseConfigured
     })
   : null;
 
-export const useDemoData = import.meta.env.VITE_USE_DEMO_DATA !== "false" && !isSupabaseConfigured;
+// Demo mode est actif si explicitement demande (VITE_USE_DEMO_DATA=true)
+// OU si Supabase n'est pas configure. Permet de coder l'UI sans devoir
+// brancher la DB, et de bloquer Supabase tant que les migrations ne sont pas appliquees.
+export const useDemoData =
+  import.meta.env.VITE_USE_DEMO_DATA === "true" || !isSupabaseConfigured;

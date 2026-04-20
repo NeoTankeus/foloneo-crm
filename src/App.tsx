@@ -23,15 +23,16 @@ import {
   Target,
   AlertTriangle,
   CheckCircle2,
+  RefreshCw,
 } from "lucide-react";
 import { Card, Badge } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { Stat, EmptyState } from "@/components/ui/overlays";
-import { DEMO_STATE } from "@/lib/demo-data";
-import { DEFAULT_SETTINGS, ETAPES, NAV_TITLES, VIEWS_WITH_FILTERS } from "@/lib/constants";
+import { ETAPES, NAV_TITLES, VIEWS_WITH_FILTERS } from "@/lib/constants";
 import { fmtEUR, fmtPct, cx, daysAgo } from "@/lib/helpers";
 import { calcDevisTotaux } from "@/lib/calculations";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { useDemoData } from "@/lib/supabase";
+import { useAppState } from "@/hooks/useAppState";
 import type { AppState, Settings } from "@/types";
 
 // ============================================================================
@@ -56,42 +57,37 @@ const NAV_ITEMS = [
 // APP
 // ============================================================================
 export default function App() {
-  const [state] = useState<AppState>(DEMO_STATE);
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const { state, loading, error, reload, updateSettingsLocal } = useAppState();
   const [view, setView] = useState<string>("dashboard");
   const [sidebarMobile, setSidebarMobile] = useState(false);
-  const [loading, setLoading] = useState(false);
 
-  // Supabase : charger les données si configuré
-  useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    setLoading(true);
-    // TODO Claude Code : remplacer par de vraies requêtes Supabase
-    // loadFromSupabase().then(setState).finally(() => setLoading(false));
-    setLoading(false);
-  }, []);
-
-  // Dark mode
+  // Dark mode toggle
   useEffect(() => {
     const root = document.documentElement;
-    if (settings.darkMode) root.classList.add("dark");
+    if (state.settings.darkMode) root.classList.add("dark");
     else root.classList.remove("dark");
-  }, [settings.darkMode]);
-
-  const updateSettings = (patch: Partial<Settings>) => setSettings((s) => ({ ...s, ...patch }));
+  }, [state.settings.darkMode]);
 
   return (
-    <div className={settings.darkMode ? "dark" : ""}>
+    <div className={state.settings.darkMode ? "dark" : ""}>
       <div className="min-h-screen bg-[#F7F8FA] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex">
-        {/* Sidebar desktop */}
         <Sidebar view={view} setView={setView} />
 
-        {/* Sidebar mobile */}
         {sidebarMobile && (
           <>
-            <div className="fixed inset-0 bg-black/40 z-30 md:hidden" onClick={() => setSidebarMobile(false)} />
+            <div
+              className="fixed inset-0 bg-black/40 z-30 md:hidden"
+              onClick={() => setSidebarMobile(false)}
+            />
             <div className="md:hidden">
-              <Sidebar view={view} setView={(v) => { setView(v); setSidebarMobile(false); }} mobile />
+              <Sidebar
+                view={view}
+                setView={(v) => {
+                  setView(v);
+                  setSidebarMobile(false);
+                }}
+                mobile
+              />
             </div>
           </>
         )}
@@ -100,23 +96,44 @@ export default function App() {
           <TopBar
             title={NAV_TITLES[view] || ""}
             onMenu={() => setSidebarMobile(true)}
-            settings={settings}
-            updateSettings={updateSettings}
+            settings={state.settings}
+            updateSettings={updateSettingsLocal}
             showFilters={VIEWS_WITH_FILTERS.has(view)}
           />
 
-          {!isSupabaseConfigured && (
+          {useDemoData && (
             <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900 px-4 py-2 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
               <AlertTriangle size={14} />
-              Mode démo — Supabase non connecté. Crée un <code className="font-mono bg-amber-100 dark:bg-amber-900/50 px-1 rounded">.env.local</code> avec tes clés pour activer la persistance.
+              Mode démo — les modifications ne sont pas persistées. Passe
+              {" "}
+              <code className="font-mono bg-amber-100 dark:bg-amber-900/50 px-1 rounded">
+                VITE_USE_DEMO_DATA=false
+              </code>
+              {" "}dans .env.local une fois les migrations Supabase appliquées.
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-50 dark:bg-red-950/30 border-b border-red-200 dark:border-red-900 px-4 py-2 text-xs text-red-800 dark:text-red-300 flex items-center gap-2">
+              <AlertTriangle size={14} />
+              Erreur de chargement&nbsp;: {error}
+              <button
+                onClick={reload}
+                className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/50 hover:bg-red-200 dark:hover:bg-red-900"
+              >
+                <RefreshCw size={12} /> Réessayer
+              </button>
             </div>
           )}
 
           <main className="flex-1 overflow-y-auto p-4 md:p-6">
             {loading ? (
-              <div className="flex items-center justify-center h-full text-slate-500">Chargement…</div>
+              <div className="flex items-center justify-center h-full text-slate-500">
+                <RefreshCw size={16} className="animate-spin mr-2" />
+                Chargement…
+              </div>
             ) : view === "dashboard" ? (
-              <Dashboard state={state} settings={settings} />
+              <Dashboard state={state} settings={state.settings} />
             ) : (
               <Placeholder view={view} />
             )}
@@ -173,7 +190,9 @@ function Sidebar({
             >
               <Icon size={16} strokeWidth={2} />
               <span className="truncate">{item.label}</span>
-              {item.accent && !active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#C9A961]" />}
+              {item.accent && !active && (
+                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#C9A961]" />
+              )}
             </button>
           );
         })}
@@ -181,7 +200,9 @@ function Sidebar({
 
       <div className="p-3 border-t border-white/10">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-[#C9A961] text-[#0B1E3F] flex items-center justify-center font-semibold text-xs">SP</div>
+          <div className="w-8 h-8 rounded-full bg-[#C9A961] text-[#0B1E3F] flex items-center justify-center font-semibold text-xs">
+            SP
+          </div>
           <div className="min-w-0 flex-1">
             <div className="text-xs font-semibold text-white truncate">Stéphane Pitaud</div>
             <div className="text-[10px] text-slate-400">Dirigeant</div>
@@ -210,10 +231,15 @@ function TopBar({
 }) {
   return (
     <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center px-3 md:px-5 gap-3 sticky top-0 z-30 flex-shrink-0">
-      <button onClick={onMenu} className="md:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300">
+      <button
+        onClick={onMenu}
+        className="md:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
+      >
         <Menu size={18} />
       </button>
-      <h1 className="text-base md:text-lg font-semibold text-slate-900 dark:text-slate-100 truncate">{title}</h1>
+      <h1 className="text-base md:text-lg font-semibold text-slate-900 dark:text-slate-100 truncate">
+        {title}
+      </h1>
 
       <div className="ml-auto flex items-center gap-1.5 md:gap-2">
         <button
@@ -230,7 +256,10 @@ function TopBar({
           <span>{settings.clientMode ? "Mode client" : "Mode interne"}</span>
         </button>
 
-        <button className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300" title="Ctrl+K">
+        <button
+          className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
+          title="Ctrl+K"
+        >
           <Command size={16} />
         </button>
         <button
@@ -245,7 +274,7 @@ function TopBar({
 }
 
 // ============================================================================
-// DASHBOARD — minimal, Claude Code va l'enrichir
+// DASHBOARD — minimal, enrichi au Module 8
 // ============================================================================
 function Dashboard({ state, settings }: { state: AppState; settings: Settings }) {
   const { deals, quotes, invoices, contrats } = state;
@@ -279,10 +308,34 @@ function Dashboard({ state, settings }: { state: AppState; settings: Settings })
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label="Pipeline pondéré" value={fmtEUR(pipelineValeur)} icon={TrendingUp} tone="gold" sub={`${deals.filter((d) => d.etape !== "signe" && d.etape !== "perdu").length} affaires`} />
-        <Stat label="CA signé" value={fmtEUR(caSigne)} icon={CheckCircle2} tone="emerald" sub={`${signes.length} contrats`} />
-        <Stat label="Taux transfo" value={fmtPct(tauxTransfo)} icon={Target} tone="blue" sub={`sur ${closed.length} affaires closes`} />
-        <Stat label="À traiter" value={devisARelancer + facturesRetard + contratsARenouveler} icon={AlertTriangle} tone="amber" sub="devis / factures / contrats" />
+        <Stat
+          label="Pipeline pondéré"
+          value={fmtEUR(pipelineValeur)}
+          icon={TrendingUp}
+          tone="gold"
+          sub={`${deals.filter((d) => d.etape !== "signe" && d.etape !== "perdu").length} affaires`}
+        />
+        <Stat
+          label="CA signé"
+          value={fmtEUR(caSigne)}
+          icon={CheckCircle2}
+          tone="emerald"
+          sub={`${signes.length} contrats`}
+        />
+        <Stat
+          label="Taux transfo"
+          value={fmtPct(tauxTransfo)}
+          icon={Target}
+          tone="blue"
+          sub={`sur ${closed.length} affaires closes`}
+        />
+        <Stat
+          label="À traiter"
+          value={devisARelancer + facturesRetard + contratsARenouveler}
+          icon={AlertTriangle}
+          tone="amber"
+          sub="devis / factures / contrats"
+        />
       </div>
 
       <Card className="p-5">
@@ -293,8 +346,13 @@ function Dashboard({ state, settings }: { state: AppState; settings: Settings })
         <div className="space-y-3">
           {pipelineByEtape.map((e) => (
             <div key={e.id} className="flex items-center gap-3">
-              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: e.color }} />
-              <div className="text-sm font-medium text-slate-700 dark:text-slate-300 w-32">{e.label}</div>
+              <div
+                className="w-3 h-3 rounded-full flex-shrink-0"
+                style={{ background: e.color }}
+              />
+              <div className="text-sm font-medium text-slate-700 dark:text-slate-300 w-32">
+                {e.label}
+              </div>
               <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all"
@@ -320,10 +378,17 @@ function Dashboard({ state, settings }: { state: AppState; settings: Settings })
             const acc = state.accounts.find((a) => a.id === q.accountId);
             const totaux = calcDevisTotaux(q, settings, state.products);
             return (
-              <div key={q.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+              <div
+                key={q.id}
+                className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50"
+              >
                 <div className="min-w-0">
-                  <div className="font-medium text-sm text-slate-900 dark:text-slate-100">{q.numero}</div>
-                  <div className="text-xs text-slate-500">{acc?.raisonSociale} — {fmtEUR(totaux.totalHT)} HT</div>
+                  <div className="font-medium text-sm text-slate-900 dark:text-slate-100">
+                    {q.numero}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {acc?.raisonSociale} — {fmtEUR(totaux.totalHT)} HT
+                  </div>
                 </div>
                 {q.status === "signe_achat" && <Badge tone="emerald">Signé</Badge>}
                 {q.status === "envoye" && <Badge tone="violet">Envoyé</Badge>}
@@ -346,10 +411,10 @@ function Placeholder({ view }: { view: string }) {
       <EmptyState
         icon={Package}
         title={`Vue « ${NAV_TITLES[view] || view} »`}
-        description="Cette vue est à reconstruire depuis src/legacy/FoloneoAppMonolith.jsx — voir PROMPT_CLAUDE_CODE.md pour la feuille de route."
+        description="Cette vue sera branchée dans un module à venir."
         action={
           <Button variant="outline" size="sm">
-            Voir la feuille de route
+            Bientôt
           </Button>
         }
       />
