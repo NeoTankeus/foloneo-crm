@@ -1,22 +1,23 @@
-import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes, ReactNode, MouseEvent } from "react";
+import type {
+  HTMLAttributes,
+  InputHTMLAttributes,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+  ReactNode,
+} from "react";
 import { cx } from "@/lib/helpers";
 
 // ============================================================================
-// CARD
+// CARD — accepte tous les attributs div standards (draggable, onDragStart, etc.)
 // ============================================================================
-export function Card({
-  children,
-  className = "",
-  hover = false,
-  onClick,
-}: {
-  children: ReactNode;
-  className?: string;
+interface CardProps extends HTMLAttributes<HTMLDivElement> {
   hover?: boolean;
-  onClick?: (e: MouseEvent<HTMLDivElement>) => void;
-}) {
+}
+
+export function Card({ children, className = "", hover = false, onClick, ...rest }: CardProps) {
   return (
     <div
+      {...rest}
       onClick={onClick}
       className={cx(
         "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl",

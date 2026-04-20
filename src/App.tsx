@@ -35,6 +35,9 @@ import { calcDevisTotaux } from "@/lib/calculations";
 import { useDemoData } from "@/lib/supabase";
 import { useAppState } from "@/hooks/useAppState";
 import { useAuth } from "@/hooks/useAuth";
+import { AccountsView } from "@/components/views/Accounts";
+import { ContactsView } from "@/components/views/Contacts";
+import { Pipeline } from "@/components/views/Pipeline";
 import type { AppState, Settings, Commercial } from "@/types";
 
 // ============================================================================
@@ -59,7 +62,7 @@ const NAV_ITEMS = [
 // APP
 // ============================================================================
 export default function App() {
-  const { state, loading, error, reload, updateSettingsLocal } = useAppState();
+  const { state, setState, loading, error, reload, updateSettingsLocal } = useAppState();
   const [view, setView] = useState<string>("dashboard");
   const [sidebarMobile, setSidebarMobile] = useState(false);
 
@@ -136,6 +139,12 @@ export default function App() {
               </div>
             ) : view === "dashboard" ? (
               <Dashboard state={state} settings={state.settings} />
+            ) : view === "pipeline" ? (
+              <Pipeline state={state} setState={setState} />
+            ) : view === "accounts" ? (
+              <AccountsView state={state} setState={setState} />
+            ) : view === "contacts" ? (
+              <ContactsView state={state} setState={setState} />
             ) : (
               <Placeholder view={view} />
             )}

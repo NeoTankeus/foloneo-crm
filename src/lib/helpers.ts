@@ -90,6 +90,18 @@ export const slugify = (s: string): string =>
     .replace(/(^-|-$)/g, "");
 
 // ============================================================================
+// LIST UPSERT
+// ============================================================================
+export function upsertById<T extends { id: string }>(list: T[], item: T): T[] {
+  const i = list.findIndex((x) => x.id === item.id);
+  return i >= 0 ? list.map((x, idx) => (idx === i ? item : x)) : [...list, item];
+}
+
+export function removeById<T extends { id: string }>(list: T[], id: string): T[] {
+  return list.filter((x) => x.id !== id);
+}
+
+// ============================================================================
 // DOWNLOAD HELPER
 // ============================================================================
 export const downloadFile = (content: string, filename: string, type = "text/plain"): void => {
