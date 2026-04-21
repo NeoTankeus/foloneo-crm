@@ -35,6 +35,11 @@ type FieldKey =
   | "quantite"
   | "prixUnitHT"
   | "totalLigneHT"
+  | "adresse"
+  | "codePostal"
+  | "ville"
+  | "telephone"
+  | "email"
   | "__ignore__";
 
 const FIELD_LABELS: Record<Exclude<FieldKey, "__ignore__">, string> = {
@@ -51,6 +56,11 @@ const FIELD_LABELS: Record<Exclude<FieldKey, "__ignore__">, string> = {
   quantite: "Quantité (ligne)",
   prixUnitHT: "Prix unitaire HT (ligne)",
   totalLigneHT: "Total HT de la ligne",
+  adresse: "Adresse client",
+  codePostal: "Code postal client",
+  ville: "Ville client",
+  telephone: "Téléphone client",
+  email: "Email client",
 };
 
 const HEADER_HINTS: Record<Exclude<FieldKey, "__ignore__">, string[]> = {
@@ -67,6 +77,11 @@ const HEADER_HINTS: Record<Exclude<FieldKey, "__ignore__">, string[]> = {
   quantite: ["quantite", "qte", "qty", "quantity"],
   prixUnitHT: ["prix unitaire ht", "prix unit ht", "pu ht", "unit price ht", "tarif unitaire"],
   totalLigneHT: ["total ligne ht", "total ligne", "sous total ligne", "line total"],
+  adresse: ["adresse 1", "adresse", "address", "rue", "street"],
+  codePostal: ["code postal client", "code postal", "code_postal", "cp", "zip", "postal code"],
+  ville: ["ville client", "ville", "city", "commune"],
+  telephone: ["telephone client", "tel client", "telephone", "tel.", "tel ", "phone"],
+  email: ["email client", "e-mail client", "email", "courriel"],
 };
 
 function mapStatut(raw: string, datePaiement: string | null): InvoiceStatus {
@@ -194,9 +209,16 @@ export function SellsyInvoiceImport({ open, accounts, onClose, onImported }: Pro
       }
 
       try {
+        const hints = {
+          adresse: getCol(firstRow, "adresse"),
+          codePostal: getCol(firstRow, "codePostal"),
+          ville: getCol(firstRow, "ville"),
+          telephone: getCol(firstRow, "telephone"),
+          email: getCol(firstRow, "email"),
+        };
         const resolved = useDemoData
           ? { account: accountsPool[0] ?? ({ id: "demo" } as Account), created: false }
-          : await resolveOrCreateAccount(raisonSociale, accountsPool);
+          : await resolveOrCreateAccount(raisonSociale, accountsPool, hints);
         if (!resolved) {
           skipped += rows.length;
           continue;

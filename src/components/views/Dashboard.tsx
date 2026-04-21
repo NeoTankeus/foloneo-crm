@@ -314,11 +314,11 @@ export function Dashboard({ state, settings, commercialFilter, periodFilter }: D
           </div>
         </Card>
 
-        {/* Carte 3D des devis signés */}
+        {/* Carte 3D des implantations clients */}
         <Card className="p-4">
           <h2 className="font-semibold text-sm mb-3 flex items-center gap-2">
             <MapPin size={14} className="text-[#C9A961]" />
-            Implantations signées
+            Implantations clients
           </h2>
           <VarMap3D state={state} settings={settings} commercialFilter={commercialFilter} />
         </Card>

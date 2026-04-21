@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/overlays";
 import { AccountEditor } from "@/components/modals/AccountEditor";
 import { SellsyImport } from "@/components/modals/SellsyImport";
+import { GeocodeAccounts } from "@/components/modals/GeocodeAccounts";
 import { SECTEURS, SOURCES } from "@/lib/constants";
 import { upsertById, removeById, cx } from "@/lib/helpers";
 import type { AppState, Account, Secteur, Source } from "@/types";
@@ -20,6 +21,7 @@ export function AccountsView({ state, setState }: Props) {
     account: null,
   });
   const [importOpen, setImportOpen] = useState(false);
+  const [geocodeOpen, setGeocodeOpen] = useState(false);
   const [search, setSearch] = useState<string>("");
   const [secteur, setSecteur] = useState<Secteur | "all">("all");
   const [source, setSource] = useState<Source | "all">("all");
@@ -91,6 +93,15 @@ export function AccountsView({ state, setState }: Props) {
             </option>
           ))}
         </Select>
+        <Button
+          variant="outline"
+          icon={MapPin}
+          onClick={() => setGeocodeOpen(true)}
+          title="Trouver les coordonnées GPS des clients pour la carte"
+        >
+          <span className="hidden md:inline">Géolocaliser</span>
+          <span className="md:hidden">GPS</span>
+        </Button>
         <Button
           variant="outline"
           icon={FileSpreadsheet}
@@ -210,6 +221,19 @@ export function AccountsView({ state, setState }: Props) {
         onClose={() => setImportOpen(false)}
         onImported={(created) =>
           setState((s) => ({ ...s, accounts: [...created, ...s.accounts] }))
+        }
+      />
+
+      <GeocodeAccounts
+        open={geocodeOpen}
+        accounts={state.accounts}
+        onClose={() => setGeocodeOpen(false)}
+        onAccountsUpdated={(updated) =>
+          setState((s) => {
+            let next = s.accounts;
+            for (const u of updated) next = upsertById(next, u);
+            return { ...s, accounts: next };
+          })
         }
       />
     </div>

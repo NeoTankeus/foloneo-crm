@@ -169,24 +169,38 @@ export function matchAccountByName(name: string, accounts: Account[]): Account |
   return fuzzy ?? null;
 }
 
-// Trouve un compte ou en cree un minimal (raison sociale uniquement).
+export interface AccountHints {
+  adresse?: string;
+  codePostal?: string;
+  ville?: string;
+  telephone?: string;
+  email?: string;
+  siret?: string;
+}
+
+// Trouve un compte ou en cree un avec les infos disponibles (nom + eventuelles
+// coordonnees). Les comptes crees avec une adresse pourront ensuite etre
+// geolocalises par batch via /lib/geocode.
 export async function resolveOrCreateAccount(
   rawName: string,
-  accounts: Account[]
+  accounts: Account[],
+  hints: AccountHints = {}
 ): Promise<ResolvedAccount> {
   const name = (rawName ?? "").trim();
   if (!name) return null;
   const existing = matchAccountByName(name, accounts);
   if (existing) return { account: existing, created: false };
-  // Creation minimaliste. Les secteurs/sources par defaut seront pris
-  // depuis le schema DB. raisonSociale est l'unique champ requis a ce stade.
+  const clean = (v?: string) => (v ?? "").trim();
   const created = await db.createAccount({
     raisonSociale: name,
     secteur: "tertiaire",
     source: "partenaire",
-    adresse: "",
-    codePostal: "",
-    ville: "",
+    adresse: clean(hints.adresse),
+    codePostal: clean(hints.codePostal),
+    ville: clean(hints.ville),
+    telephone: clean(hints.telephone) || undefined,
+    email: clean(hints.email) || undefined,
+    siret: clean(hints.siret) || undefined,
   });
   return { account: created, created: true };
 }
