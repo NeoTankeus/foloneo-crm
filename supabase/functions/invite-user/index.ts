@@ -110,11 +110,14 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 3) Creer le user (pas d'email automatique, evite le rate-limit SMTP Supabase)
+    // 3) Creer le user avec un password initial genere (pas de mail SMTP,
+    // on retournera le password au dirigeant pour qu'il le communique).
     // @ts-expect-error Deno global
     const APP_URL = Deno.env.get("APP_URL") ?? req.headers.get("origin") ?? "";
+    const initialPassword = generatePassword(12);
     const { data: userData, error: createErr } = await admin.auth.admin.createUser({
       email,
+      password: initialPassword,
       email_confirm: true,
       user_metadata: { prenom, nom },
     });
@@ -179,7 +182,14 @@ Deno.serve(async (req: Request) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, commercial, manualLink, linkWarning }),
+      JSON.stringify({
+        success: true,
+        commercial,
+        initialPassword,
+        appUrl: APP_URL,
+        manualLink,
+        linkWarning,
+      }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
@@ -190,3 +200,16 @@ Deno.serve(async (req: Request) => {
     });
   }
 });
+
+// Genere un mot de passe alphanumerique lisible (pas de 0/O/1/l pour eviter
+// les confusions visuelles quand on le transmet en SMS).
+function generatePassword(len = 12): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  let out = "";
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
+  for (let i = 0; i < len; i++) {
+    out += chars[bytes[i] % chars.length];
+  }
+  return out;
+}

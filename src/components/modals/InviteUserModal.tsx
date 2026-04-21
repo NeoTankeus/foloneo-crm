@@ -26,6 +26,7 @@ export function InviteUserModal({ open, onClose, onInvited }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [manualLink, setManualLink] = useState<string | null>(null);
+  const [credentials, setCredentials] = useState<{ email: string; password: string; url: string } | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
 
   async function invite() {
@@ -68,6 +69,8 @@ export function InviteUserModal({ open, onClose, onInvited }: Props) {
         error?: string;
         manualLink?: string | null;
         linkWarning?: string | null;
+        initialPassword?: string;
+        appUrl?: string;
       };
       if (!payload.success || !payload.commercial) {
         throw new Error(payload.error ?? "Reponse invalide");
@@ -91,13 +94,13 @@ export function InviteUserModal({ open, onClose, onInvited }: Props) {
         couleur: String(raw.couleur ?? "#60A5FA"),
         actif: raw.actif === false ? false : true,
       };
-      const successMsg = payload.manualLink
-        ? `Utilisateur créé pour ${email}. Copie le lien ci-dessous et envoie-le à la personne.`
-        : payload.linkWarning
-          ? `Utilisateur créé pour ${email}. Pas de lien auto : ${payload.linkWarning}. La personne peut cliquer "Mot de passe oublié" sur l'écran de connexion.`
-          : `Utilisateur créé pour ${email}.`;
-      setSuccess(successMsg);
+      setSuccess(`Utilisateur ${email} créé. Copie les identifiants ci-dessous et envoie-les par SMS / WhatsApp.`);
       setManualLink(payload.manualLink ?? null);
+      setCredentials({
+        email,
+        password: payload.initialPassword ?? "(mot de passe non retourné)",
+        url: payload.appUrl || window.location.origin,
+      });
       onInvited(commercial);
     } catch (e) {
       const msg =
@@ -207,51 +210,55 @@ export function InviteUserModal({ open, onClose, onInvited }: Props) {
             <div>{success}</div>
           </div>
         )}
-        {manualLink && (
-          <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 space-y-2">
-            <div className="text-xs font-semibold text-amber-900 dark:text-amber-300">
-              Lien de connexion manuel (en cas de non-réception du mail)
+        {credentials && (
+          <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 space-y-3">
+            <div className="text-sm font-semibold text-amber-900 dark:text-amber-300">
+              Identifiants à transmettre à {credentials.email}
             </div>
             <div className="text-[11px] text-amber-800 dark:text-amber-300">
-              Copie ce lien et envoie-le à {email} par SMS, WhatsApp ou mail perso. Il lui
-              suffira de cliquer pour définir son mot de passe et se connecter.
+              Copie ce bloc et envoie-le par SMS, WhatsApp ou mail perso.
+              La personne pourra changer son mot de passe dans Équipe une fois connectée.
             </div>
-            <div className="flex gap-2">
-              <input
-                readOnly
-                value={manualLink}
-                onFocus={(e) => e.currentTarget.select()}
-                className="flex-1 h-8 px-2 text-[10px] rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 font-mono"
-              />
+            <pre className="p-3 rounded-md bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 text-xs font-mono whitespace-pre-wrap break-words">{`URL : ${credentials.url}
+Email : ${credentials.email}
+Mot de passe : ${credentials.password}`}</pre>
+            <div className="flex gap-2 flex-wrap">
               <Button
                 size="sm"
                 variant={copied ? "primary" : "gold"}
                 icon={copied ? Check : Copy}
                 onClick={async () => {
-                  await navigator.clipboard.writeText(manualLink);
+                  const text = `Connexion FOLONEO CRM\nURL : ${credentials.url}\nEmail : ${credentials.email}\nMot de passe : ${credentials.password}`;
+                  await navigator.clipboard.writeText(text);
                   setCopied(true);
                   setTimeout(() => setCopied(false), 2000);
                 }}
               >
-                {copied ? "Copié" : "Copier"}
+                {copied ? "Copié" : "Copier tout"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEmail("");
+                  setPrenom("");
+                  setNom("");
+                  setTelephone("");
+                  setObjectifMensuel(25000);
+                  setManualLink(null);
+                  setCredentials(null);
+                  setSuccess(null);
+                }}
+              >
+                Inviter quelqu'un d'autre
               </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                // Nouveau invité : reset le formulaire pour enchainer une autre invitation
-                setEmail("");
-                setPrenom("");
-                setNom("");
-                setTelephone("");
-                setObjectifMensuel(25000);
-                setManualLink(null);
-                setSuccess(null);
-              }}
-            >
-              Inviter quelqu'un d'autre
-            </Button>
+            {manualLink && (
+              <details className="text-[11px] text-amber-800 dark:text-amber-300">
+                <summary className="cursor-pointer">Alternative : lien de réinitialisation</summary>
+                <div className="mt-2 break-all font-mono">{manualLink}</div>
+              </details>
+            )}
           </div>
         )}
       </div>
