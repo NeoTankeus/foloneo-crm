@@ -25,21 +25,20 @@ export function WizardStep1Client({ draft, setDraft, state }: Props) {
           Client et affaire
         </div>
         <div className="text-xs text-slate-500">
-          Sélectionne le compte et le contact concernés par ce devis.
+          Sélectionne le compte et le contact concernés par ce devis. Si vide, un compte client sera créé automatiquement.
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Select
           label="Compte"
-          required
           value={draft.accountId}
           onChange={(e) => {
             const accountId = e.target.value;
             setDraft((d) => ({ ...d, accountId, contactId: undefined }));
           }}
         >
-          <option value="">— Sélectionner —</option>
+          <option value="">— Créer automatiquement —</option>
           {state.accounts.map((a) => (
             <option key={a.id} value={a.id}>
               {a.raisonSociale}

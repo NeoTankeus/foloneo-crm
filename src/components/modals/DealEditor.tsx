@@ -19,6 +19,9 @@ interface Props {
   onClose: () => void;
   onSaved: (d: Deal) => void;
   onDeleted?: (id: string) => void;
+  // Appele si un compte a ete cree automatiquement lors de la sauvegarde
+  // (Option B : pipeline sans compte -> compte auto-cree cote DB).
+  onAccountsRefreshed?: (accounts: Account[]) => void;
 }
 
 const EMPTY: Omit<Deal, "id" | "createdAt"> = {
@@ -44,6 +47,7 @@ export function DealEditor({
   onClose,
   onSaved,
   onDeleted,
+  onAccountsRefreshed,
 }: Props) {
   const [form, setForm] = useState<Omit<Deal, "id" | "createdAt">>(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -54,7 +58,9 @@ export function DealEditor({
       const { id: _id, createdAt: _createdAt, ...rest } = deal;
       setForm(rest);
     } else {
-      setForm({ ...EMPTY, accountId: defaultAccountId ?? accounts[0]?.id ?? "" });
+      // Option B : accountId laisse vide par defaut -> compte cree automatiquement
+      // a la sauvegarde. L'utilisateur peut toujours selectionner un compte existant.
+      setForm({ ...EMPTY, accountId: defaultAccountId ?? "" });
     }
     setError(null);
   }, [deal, open, defaultAccountId, accounts]);
@@ -79,6 +85,7 @@ export function DealEditor({
     setError(null);
     try {
       let saved: Deal;
+      const autoCreateAccount = !deal && !form.accountId;
       if (deal) {
         saved = useDemoData ? { ...deal, ...form } : await db.updateDeal(deal.id, form);
       } else {
@@ -87,6 +94,15 @@ export function DealEditor({
           : await db.createDeal(form);
       }
       onSaved(saved);
+      // Si un compte a ete auto-cree cote DB, on propose au parent de rafraichir sa liste.
+      if (autoCreateAccount && !useDemoData && onAccountsRefreshed) {
+        try {
+          const fresh = await db.listAccounts();
+          onAccountsRefreshed(fresh);
+        } catch {
+          /* refresh best-effort */
+        }
+      }
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur d'enregistrement");
@@ -132,7 +148,7 @@ export function DealEditor({
             variant="primary"
             icon={Save}
             onClick={save}
-            disabled={saving || !form.titre || !form.accountId}
+            disabled={saving || !form.titre}
           >
             {saving ? "Enregistrement…" : "Enregistrer"}
           </Button>
@@ -151,11 +167,10 @@ export function DealEditor({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Select
             label="Compte"
-            required
             value={form.accountId}
             onChange={(e) => patch("accountId", e.target.value)}
           >
-            <option value="">— Sélectionner —</option>
+            <option value="">— Créer automatiquement —</option>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.raisonSociale}

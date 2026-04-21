@@ -7,14 +7,17 @@ import { Card } from "./primitives";
 // ============================================================================
 // MODAL
 // ============================================================================
+// Mobile : plein-ecran (inset-0, pas de padding, pas de coins arrondis)
+// Desktop (>=sm) : centre avec max-width par taille, coins arrondis, max-height 95vh.
+// La modale s'adapte automatiquement — pas d'option supplementaire necessaire.
 type ModalSize = "sm" | "md" | "lg" | "xl" | "full";
 
 const modalSizes: Record<ModalSize, string> = {
-  sm: "max-w-md",
-  md: "max-w-2xl",
-  lg: "max-w-4xl",
-  xl: "max-w-6xl",
-  full: "max-w-[95vw]",
+  sm: "sm:max-w-md",
+  md: "sm:max-w-2xl",
+  lg: "sm:max-w-4xl",
+  xl: "sm:max-w-6xl",
+  full: "sm:max-w-[95vw]",
 };
 
 export function Modal({
@@ -35,30 +38,35 @@ export function Modal({
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4"
+      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-stretch sm:items-center justify-center sm:p-4"
       onClick={onClose}
     >
       <div
         className={cx(
-          "w-full bg-white dark:bg-slate-900 rounded-2xl shadow-2xl flex flex-col max-h-[95vh] animate-slideUp overflow-hidden",
+          "w-full bg-white dark:bg-slate-900 shadow-2xl flex flex-col animate-slideUp overflow-hidden",
+          // Mobile : plein ecran
+          "h-dvh sm:h-auto sm:max-h-[95vh]",
+          // Coins arrondis uniquement desktop
+          "rounded-none sm:rounded-2xl",
           modalSizes[size]
         )}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
-          <header className="flex items-center justify-between px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
-            <h2 className="font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+          <header className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex-shrink-0 pt-safe sm:pt-3">
+            <h2 className="font-semibold text-slate-900 dark:text-slate-100 truncate pr-3">{title}</h2>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+              aria-label="Fermer"
+              className="p-2 -mr-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 flex-shrink-0"
             >
-              <X size={16} />
+              <X size={18} />
             </button>
           </header>
         )}
-        <div className="flex-1 overflow-y-auto p-5">{children}</div>
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5">{children}</div>
         {footer && (
-          <footer className="px-5 py-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2 flex-shrink-0 bg-slate-50 dark:bg-slate-900/50">
+          <footer className="px-4 sm:px-5 py-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2 flex-shrink-0 bg-slate-50 dark:bg-slate-900/50 pb-safe sm:pb-3 flex-wrap">
             {footer}
           </footer>
         )}

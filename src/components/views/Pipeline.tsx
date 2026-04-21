@@ -188,6 +188,7 @@ export function Pipeline({ state, setState }: Props) {
         onClose={() => setEditor({ open: false, deal: null })}
         onSaved={(d) => setState((s) => ({ ...s, deals: upsertById(s.deals, d) }))}
         onDeleted={(id) => setState((s) => ({ ...s, deals: removeById(s.deals, id) }))}
+        onAccountsRefreshed={(accounts) => setState((s) => ({ ...s, accounts }))}
       />
     </div>
   );

@@ -92,11 +92,26 @@ export async function listQuotes(): Promise<Quote[]> {
 
 // Cree un devis + ses lignes en une operation (les lignes inserees apres le devis
 // pour avoir le quote_id, puis rechargement du devis avec ses lignes).
+// Si accountId est vide, un compte client minimal est cree automatiquement
+// (raison_sociale = "Client à compléter — {numero}") — l'utilisateur complete ensuite.
 export async function createQuote(q: Omit<Quote, "id" | "createdAt">): Promise<Quote> {
   if (useDemoData || !supabase) throw new Error("Mode demo");
+
+  let accountId = q.accountId;
+  if (!accountId) {
+    const label = q.numero ? `Client à compléter — ${q.numero}` : "Client à compléter";
+    const { data: acc, error: errAcc } = await supabase
+      .from("accounts")
+      .insert({ raison_sociale: label })
+      .select("id")
+      .single();
+    if (errAcc) throw errAcc;
+    accountId = acc.id;
+  }
+
   const { data: quote, error } = await supabase
     .from("quotes")
-    .insert(toRow(q))
+    .insert({ ...toRow(q), account_id: accountId })
     .select()
     .single();
   if (error) throw error;

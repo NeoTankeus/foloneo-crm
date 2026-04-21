@@ -41,9 +41,28 @@ export async function listDeals(): Promise<Deal[]> {
   return (data ?? []).map(fromRow);
 }
 
+// Si accountId est vide, un compte client minimal est cree automatiquement
+// (raison_sociale = "Client à compléter — {titre}") — l'utilisateur complete ensuite.
 export async function createDeal(d: Omit<Deal, "id" | "createdAt">): Promise<Deal> {
   if (useDemoData || !supabase) throw new Error("Mode demo");
-  const { data, error } = await supabase.from("deals").insert(toRow(d)).select().single();
+
+  let accountId = d.accountId;
+  if (!accountId) {
+    const label = d.titre ? `Client à compléter — ${d.titre}` : "Client à compléter";
+    const { data: acc, error: errAcc } = await supabase
+      .from("accounts")
+      .insert({ raison_sociale: label })
+      .select("id")
+      .single();
+    if (errAcc) throw errAcc;
+    accountId = acc.id;
+  }
+
+  const { data, error } = await supabase
+    .from("deals")
+    .insert({ ...toRow(d), account_id: accountId })
+    .select()
+    .single();
   if (error) throw error;
   return fromRow(data);
 }

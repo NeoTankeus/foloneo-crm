@@ -90,7 +90,8 @@ export function QuoteWizard({
 
   function canGoNext(): boolean {
     if (!draft) return false;
-    if (step === 0) return !!draft.accountId && !!draft.commercialId;
+    // Step 0 : le compte peut etre vide (auto-cree a la sauvegarde) ; seul le commercial est requis.
+    if (step === 0) return !!draft.commercialId;
     if (step === 1) return draft.lignes.length > 0;
     return true;
   }
@@ -101,6 +102,7 @@ export function QuoteWizard({
     setError(null);
     try {
       let saved: Quote;
+      const autoCreateAccount = !draft.accountId;
       if (quote && quote.id) {
         saved = useDemoData ? { ...draft } : await db.updateQuote(quote.id, draft);
       } else {
@@ -108,7 +110,21 @@ export function QuoteWizard({
           ? { ...draft, id: `demo_q_${Date.now()}` }
           : await db.createQuote(draft);
       }
-      setState((s) => ({ ...s, quotes: upsertById(s.quotes, saved) }));
+      // Si un compte a ete cree automatiquement cote DB, on recharge la liste
+      // pour que l'UI (vues Clients, wizard, etc.) voie le nouveau compte.
+      let accountsPatch: Awaited<ReturnType<typeof db.listAccounts>> | null = null;
+      if (autoCreateAccount && !useDemoData) {
+        try {
+          accountsPatch = await db.listAccounts();
+        } catch {
+          /* refresh best-effort */
+        }
+      }
+      setState((s) => ({
+        ...s,
+        quotes: upsertById(s.quotes, saved),
+        accounts: accountsPatch ?? s.accounts,
+      }));
       onSaved?.(saved);
       onClose();
     } catch (e) {

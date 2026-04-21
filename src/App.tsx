@@ -12,7 +12,6 @@ import {
   Calendar,
   LifeBuoy,
   Settings as SettingsIcon,
-  Shield,
   Eye,
   EyeOff,
   Moon,
@@ -22,6 +21,8 @@ import {
   AlertTriangle,
   RefreshCw,
   LogOut,
+  X,
+  MoreHorizontal,
 } from "lucide-react";
 import { Select } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
@@ -92,13 +93,16 @@ export default function App() {
 
   return (
     <div className={state.settings.darkMode ? "dark" : ""}>
-      <div className="min-h-screen bg-[#F7F8FA] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex">
+      {/* h-dvh = hauteur dynamique du viewport (tient compte de la barre d'URL iOS).
+          overflow-hidden empeche la page entiere de scroller : seul <main> scrolle,
+          donc la sidebar reste entierement visible. */}
+      <div className="h-dvh bg-[#F7F8FA] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex overflow-hidden">
         <Sidebar view={view} setView={setView} />
 
         {sidebarMobile && (
           <>
             <div
-              className="fixed inset-0 bg-black/40 z-30 md:hidden"
+              className="fixed inset-0 bg-black/40 z-40 md:hidden"
               onClick={() => setSidebarMobile(false)}
             />
             <div className="md:hidden">
@@ -109,6 +113,7 @@ export default function App() {
                   setSidebarMobile(false);
                 }}
                 mobile
+                onClose={() => setSidebarMobile(false)}
               />
             </div>
           </>
@@ -152,7 +157,8 @@ export default function App() {
             </div>
           )}
 
-          <main className="flex-1 overflow-y-auto p-4 md:p-6">
+          {/* pb-20 md:pb-0 : laisse la place pour la bottom-nav mobile (64px + safe-area) */}
+          <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 md:pb-6">
             {loading ? (
               <div className="flex items-center justify-center h-full text-slate-500">
                 <RefreshCw size={16} className="animate-spin mr-2" />
@@ -197,6 +203,8 @@ export default function App() {
             )}
           </main>
         </div>
+
+        <MobileBottomNav view={view} setView={setView} onMore={() => setSidebarMobile(true)} />
       </div>
 
       <CommandPalette
@@ -209,32 +217,105 @@ export default function App() {
   );
 }
 
+// ============================================================================
+// MOBILE BOTTOM NAV — 4 raccourcis pour l'usage en clientele + "Plus"
+// ============================================================================
+const MOBILE_NAV_ITEMS = [
+  { id: "dashboard", label: "Accueil", icon: LayoutDashboard },
+  { id: "pipeline", label: "Pipeline", icon: Briefcase },
+  { id: "quotes", label: "Devis", icon: FileText },
+  { id: "accounts", label: "Clients", icon: Building2 },
+] as const;
+
+function MobileBottomNav({
+  view,
+  setView,
+  onMore,
+}: {
+  view: string;
+  setView: (v: string) => void;
+  onMore: () => void;
+}) {
+  return (
+    <nav
+      className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 pb-safe"
+      aria-label="Navigation principale"
+    >
+      <div className="grid grid-cols-5 h-16">
+        {MOBILE_NAV_ITEMS.map((item) => {
+          const Icon = item.icon;
+          const active = view === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => setView(item.id)}
+              className={cx(
+                "flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors active:bg-slate-100 dark:active:bg-slate-800",
+                active
+                  ? "text-[#0B1E3F] dark:text-[#C9A961]"
+                  : "text-slate-500 dark:text-slate-400"
+              )}
+            >
+              <Icon size={22} strokeWidth={active ? 2.5 : 2} />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+        <button
+          onClick={onMore}
+          className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400 active:bg-slate-100 dark:active:bg-slate-800"
+          aria-label="Plus de vues"
+        >
+          <MoreHorizontal size={22} strokeWidth={2} />
+          <span>Plus</span>
+        </button>
+      </div>
+    </nav>
+  );
+}
+
 function Sidebar({
   view,
   setView,
   mobile = false,
+  onClose,
 }: {
   view: string;
   setView: (v: string) => void;
   mobile?: boolean;
+  onClose?: () => void;
 }) {
   return (
     <aside
       className={cx(
-        "bg-[#0B1E3F] text-slate-300 flex flex-col h-full transition-all duration-200 flex-shrink-0 w-60",
-        mobile ? "fixed inset-y-0 left-0 z-40 shadow-2xl" : "hidden md:flex"
+        "bg-[#0B1E3F] text-slate-300 flex flex-col transition-all duration-200 flex-shrink-0",
+        // h-full fonctionne ici parce que le parent est h-dvh + overflow-hidden.
+        "h-full",
+        mobile
+          ? "fixed inset-y-0 left-0 z-50 shadow-2xl w-[82vw] max-w-xs pt-safe"
+          : "hidden md:flex w-60"
       )}
     >
-      <div className="h-14 flex items-center px-4 border-b border-white/10 flex-shrink-0">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-[#C9A961] flex items-center justify-center flex-shrink-0">
-            <Shield size={16} className="text-[#0B1E3F]" strokeWidth={2.5} />
-          </div>
-          <div>
-            <div className="font-bold text-white tracking-tight">FOLONEO</div>
-            <div className="text-[10px] text-slate-400 -mt-0.5">Sécurité électronique</div>
-          </div>
+      <div className="h-14 flex items-center px-4 border-b border-white/10 flex-shrink-0 gap-2">
+        {/* Le logo herite de currentColor. On passe donc par "text-white" sur le
+            parent pour l'afficher en blanc sur le fond navy de la sidebar. */}
+        <div className="flex-1 min-w-0 flex items-center text-white">
+          <img
+            src="/logo-foloneo.svg"
+            alt="Foloneo"
+            className="h-10 w-auto"
+            style={{ filter: "brightness(0) invert(1)" }}
+          />
         </div>
+        {mobile && onClose && (
+          <button
+            onClick={onClose}
+            aria-label="Fermer le menu"
+            className="p-2 -mr-1 rounded-lg text-slate-300 hover:bg-white/10 flex-shrink-0"
+          >
+            <X size={18} />
+          </button>
+        )}
       </div>
 
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
@@ -246,11 +327,13 @@ function Sidebar({
               key={item.id}
               onClick={() => setView(item.id)}
               className={cx(
-                "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                // Plus gros padding en mobile (py-3) pour une cible tactile confortable.
+                "w-full flex items-center gap-3 px-3 rounded-lg text-sm font-medium transition-colors",
+                mobile ? "py-3" : "py-2",
                 active ? "bg-white/10 text-white" : "text-slate-400 hover:bg-white/5 hover:text-white"
               )}
             >
-              <Icon size={16} strokeWidth={2} />
+              <Icon size={mobile ? 18 : 16} strokeWidth={2} />
               <span className="truncate">{item.label}</span>
               {item.accent && !active && (
                 <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#C9A961]" />
@@ -364,24 +447,28 @@ function TopBar({
         </div>
       )}
 
-      <div className="ml-auto flex items-center gap-1.5 md:gap-2">
+      <div className="ml-auto flex items-center gap-1 md:gap-2">
+        {/* Mode client : icone-seule sur mobile (critique en clientele), texte+icone sur desktop */}
         <button
           onClick={() => updateSettings({ clientMode: !settings.clientMode })}
           className={cx(
-            "hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors",
+            "inline-flex items-center gap-1.5 rounded-lg transition-colors font-semibold",
+            "p-2 sm:px-2.5 sm:py-1.5 text-xs",
             settings.clientMode
               ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
               : "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
           )}
           title="Mode client masque les marques et prix d'achat"
+          aria-label={settings.clientMode ? "Mode client actif" : "Mode interne actif"}
         >
-          {settings.clientMode ? <Eye size={14} /> : <EyeOff size={14} />}
-          <span>{settings.clientMode ? "Mode client" : "Mode interne"}</span>
+          {settings.clientMode ? <Eye size={16} /> : <EyeOff size={16} />}
+          <span className="hidden sm:inline">{settings.clientMode ? "Mode client" : "Mode interne"}</span>
         </button>
 
+        {/* Command palette : masquee sur mobile (pas d'interet tactile, raccourci clavier) */}
         <button
           onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true }))}
-          className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
+          className="hidden sm:inline-flex p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
           title="Ctrl+K"
         >
           <Command size={16} />
@@ -389,6 +476,7 @@ function TopBar({
         <button
           onClick={() => updateSettings({ darkMode: !settings.darkMode })}
           className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
+          aria-label={settings.darkMode ? "Mode clair" : "Mode sombre"}
         >
           {settings.darkMode ? <Sun size={16} /> : <Moon size={16} />}
         </button>

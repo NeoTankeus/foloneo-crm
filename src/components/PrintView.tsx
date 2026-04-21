@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Printer, X, Shield } from "lucide-react";
+import { Printer, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { BRAND, NIVEAUX_MAINTENANCE } from "@/lib/constants";
 import { fmtEUR, fmtEURc, fmtDate } from "@/lib/helpers";
@@ -73,19 +73,14 @@ export function PrintView({ open, quote, state, settings, mode, onClose }: Print
         {/* En-tete */}
         <header className="flex items-start justify-between gap-6 pb-6 border-b-2 border-[#0B1E3F]">
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <div
-                className="w-10 h-10 rounded-lg flex items-center justify-center"
-                style={{ background: BRAND.gold }}
-              >
-                <Shield size={18} color={BRAND.navy} strokeWidth={2.5} />
-              </div>
-              <div>
-                <div className="text-2xl font-bold tracking-tight" style={{ color: BRAND.navy }}>
-                  {societe.nom}
-                </div>
-                <div className="text-[11px] text-slate-500 -mt-0.5">Sécurité électronique</div>
-              </div>
+            {/* Logo noir sur fond blanc — le SVG utilise currentColor, on force donc
+                la couleur navy via le parent pour rester dans la charte. */}
+            <div className="mb-3" style={{ color: BRAND.navy }}>
+              <img
+                src="/logo-foloneo.svg"
+                alt={societe.nom}
+                className="h-14 w-auto"
+              />
             </div>
             <div className="text-[11px] text-slate-600 space-y-0.5">
               <div>{societe.adresse}</div>
@@ -410,7 +405,7 @@ function LeasingBody({
         className="mt-6 p-5 rounded-lg text-white"
         style={{ background: BRAND.navy }}
       >
-        <div className="text-[10px] uppercase tracking-wider opacity-80 mb-1">Votre engagement</div>
+        <div className="text-[10px] uppercase tracking-wider opacity-80 mb-1">Prestation de services globale évolutive</div>
         <div className="flex items-end justify-between">
           <div>
             <div className="text-4xl font-bold tabular-nums" style={{ color: BRAND.gold }}>

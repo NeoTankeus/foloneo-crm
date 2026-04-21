@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { Shield, Mail, LogIn, UserPlus, AlertTriangle, RefreshCw } from "lucide-react";
+import { Mail, LogIn, UserPlus, AlertTriangle, RefreshCw } from "lucide-react";
 import { supabase, useDemoData } from "@/lib/supabase";
 import { DEMO_STATE } from "@/lib/demo-data";
 import { Button } from "@/components/ui/Button";
@@ -141,14 +141,14 @@ function AuthFrame({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-[#0B1E3F] text-slate-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <div className="flex items-center justify-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-[#C9A961] flex items-center justify-center">
-            <Shield size={20} className="text-[#0B1E3F]" strokeWidth={2.5} />
-          </div>
-          <div>
-            <div className="font-bold text-xl tracking-tight">FOLONEO</div>
-            <div className="text-[11px] text-slate-400 -mt-0.5">Sécurité électronique</div>
-          </div>
+        {/* Logo blanc sur fond navy (filter: invert) — meme principe que la sidebar */}
+        <div className="flex items-center justify-center mb-6 text-white">
+          <img
+            src="/logo-foloneo.svg"
+            alt="Foloneo"
+            className="h-14 w-auto"
+            style={{ filter: "brightness(0) invert(1)" }}
+          />
         </div>
         <Card className="p-6 bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
           {children}
