@@ -22,7 +22,8 @@ import { Card, Badge } from "@/components/ui/primitives";
 import { Stat } from "@/components/ui/overlays";
 import { ETAPES } from "@/lib/constants";
 import { calcCommissionMensuelle, caCommercialPeriode, monthBounds } from "@/lib/rem";
-import { fmtEUR, fmtPct, daysAgo, daysUntil, cx, initials } from "@/lib/helpers";
+import { fmtEUR, fmtPct, daysAgo, daysUntil, initials } from "@/lib/helpers";
+import { VarMap3D } from "./VarMap3D";
 import type { AppState, Settings } from "@/types";
 
 interface DashboardProps {
@@ -303,13 +304,13 @@ export function Dashboard({ state, settings, commercialFilter, periodFilter }: D
           </div>
         </Card>
 
-        {/* VarMap */}
+        {/* Carte 3D des devis signés */}
         <Card className="p-4">
           <h2 className="font-semibold text-sm mb-3 flex items-center gap-2">
             <MapPin size={14} className="text-[#C9A961]" />
-            Prospects Var
+            Implantations signées
           </h2>
-          <VarMap state={state} commercialFilter={commercialFilter} />
+          <VarMap3D state={state} settings={settings} commercialFilter={commercialFilter} />
         </Card>
       </div>
 
@@ -418,124 +419,3 @@ export function Dashboard({ state, settings, commercialFilter, periodFilter }: D
   );
 }
 
-// =============================================================================
-// VAR MAP SVG — bbox 43.0-43.3 N, 5.6-6.5 E
-// =============================================================================
-function VarMap({
-  state,
-  commercialFilter,
-}: {
-  state: AppState;
-  commercialFilter: string | "all";
-}) {
-  const BBOX = { minLat: 43.0, maxLat: 43.3, minLng: 5.6, maxLng: 6.5 };
-  const W = 320;
-  const H = 180;
-  const project = (lat: number, lng: number) => ({
-    x: ((lng - BBOX.minLng) / (BBOX.maxLng - BBOX.minLng)) * W,
-    y: ((BBOX.maxLat - lat) / (BBOX.maxLat - BBOX.minLat)) * H,
-  });
-
-  type Pin = {
-    a: (typeof state.accounts)[number];
-    color: string;
-    etape?: (typeof ETAPES)[number];
-  };
-  const pins: Pin[] = [];
-  state.accounts
-    .filter((a) => typeof a.latitude === "number" && typeof a.longitude === "number")
-    .forEach((a) => {
-      const deal = state.deals.find(
-        (d) => d.accountId === a.id && d.etape !== "perdu"
-      );
-      if (
-        commercialFilter !== "all" &&
-        deal?.commercialId !== commercialFilter &&
-        !state.deals.some(
-          (d) => d.accountId === a.id && d.commercialId === commercialFilter
-        )
-      ) {
-        return;
-      }
-      const com = deal?.commercialId
-        ? state.commerciaux.find((c) => c.id === deal.commercialId)
-        : undefined;
-      const etape = deal ? ETAPES.find((e) => e.id === deal.etape) : undefined;
-      const color = com?.couleur ?? etape?.color ?? "#94A3B8";
-      pins.push({ a, color, etape });
-    });
-
-  // Villes reperes
-  const cities: { name: string; lat: number; lng: number }[] = [
-    { name: "Toulon", lat: 43.1242, lng: 5.928 },
-    { name: "La Seyne", lat: 43.1024, lng: 5.8831 },
-    { name: "Six-Fours", lat: 43.0944, lng: 5.8389 },
-    { name: "Sanary", lat: 43.1178, lng: 5.8003 },
-    { name: "Hyères", lat: 43.1205, lng: 6.1286 },
-  ];
-
-  return (
-    <div className="relative">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
-        {/* Mer */}
-        <rect width={W} height={H} fill="#EFF6FF" />
-        {/* Silhouette tres simplifiee du Var cote */}
-        <path
-          d={`M 0 ${H * 0.55} Q ${W * 0.15} ${H * 0.4}, ${W * 0.3} ${H * 0.45} T ${W * 0.6} ${H * 0.48} T ${W} ${H * 0.42} L ${W} 0 L 0 0 Z`}
-          fill="#F3F4F6"
-          stroke="#CBD5E1"
-          strokeWidth="0.5"
-        />
-        {/* Villes reperes */}
-        {cities.map((c) => {
-          const { x, y } = project(c.lat, c.lng);
-          return (
-            <g key={c.name}>
-              <circle cx={x} cy={y} r={1.5} fill="#94A3B8" />
-              <text
-                x={x + 3}
-                y={y + 3}
-                fontSize="7"
-                fill="#64748B"
-                fontFamily="system-ui"
-              >
-                {c.name}
-              </text>
-            </g>
-          );
-        })}
-        {/* Pins prospects */}
-        {pins.map((p) => {
-          const { x, y } = project(p.a.latitude!, p.a.longitude!);
-          return (
-            <g key={p.a.id}>
-              <circle cx={x} cy={y} r={5} fill={p.color} opacity="0.3" className="animate-pulse">
-                <animate attributeName="r" values="4;7;4" dur="2s" repeatCount="indefinite" />
-              </circle>
-              <circle cx={x} cy={y} r={3} fill={p.color}>
-                <title>
-                  {p.a.raisonSociale}
-                  {p.etape ? ` · ${p.etape.label}` : ""}
-                </title>
-              </circle>
-            </g>
-          );
-        })}
-      </svg>
-      <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-slate-500">
-        {ETAPES.filter((e) => e.id !== "perdu").map((e) => (
-          <div
-            key={e.id}
-            className={cx("inline-flex items-center gap-1 px-1.5 py-0.5 rounded")}
-          >
-            <span className="w-2 h-2 rounded-full" style={{ background: e.color }} />
-            {e.label}
-          </div>
-        ))}
-      </div>
-      <div className="text-[10px] text-slate-400 mt-1">
-        {pins.length} prospect{pins.length > 1 ? "s" : ""} géolocalisés
-      </div>
-    </div>
-  );
-}

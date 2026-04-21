@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { Plus, Search, MapPin, Mail, Phone, Building2 } from "lucide-react";
+import { Plus, Search, MapPin, Mail, Phone, Building2, FileSpreadsheet } from "lucide-react";
 import { Card, Input, Select, Badge } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/overlays";
 import { AccountEditor } from "@/components/modals/AccountEditor";
+import { SellsyImport } from "@/components/modals/SellsyImport";
 import { SECTEURS, SOURCES } from "@/lib/constants";
 import { upsertById, removeById, cx } from "@/lib/helpers";
 import type { AppState, Account, Secteur, Source } from "@/types";
@@ -18,6 +19,7 @@ export function AccountsView({ state, setState }: Props) {
     open: false,
     account: null,
   });
+  const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState<string>("");
   const [secteur, setSecteur] = useState<Secteur | "all">("all");
   const [source, setSource] = useState<Source | "all">("all");
@@ -89,6 +91,14 @@ export function AccountsView({ state, setState }: Props) {
             </option>
           ))}
         </Select>
+        <Button
+          variant="outline"
+          icon={FileSpreadsheet}
+          onClick={() => setImportOpen(true)}
+        >
+          <span className="hidden sm:inline">Importer Sellsy</span>
+          <span className="sm:hidden">Import</span>
+        </Button>
         <Button
           variant="gold"
           icon={Plus}
@@ -192,6 +202,14 @@ export function AccountsView({ state, setState }: Props) {
         }
         onDeleted={(id) =>
           setState((s) => ({ ...s, accounts: removeById(s.accounts, id) }))
+        }
+      />
+
+      <SellsyImport
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={(created) =>
+          setState((s) => ({ ...s, accounts: [...created, ...s.accounts] }))
         }
       />
     </div>

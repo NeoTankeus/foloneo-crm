@@ -25,6 +25,8 @@ export default defineConfig({
             if (id.includes("@supabase")) return "vendor-supabase";
             if (id.includes("recharts") || id.includes("d3-")) return "vendor-charts";
             if (id.includes("lucide-react")) return "vendor-icons";
+            if (id.includes("maplibre-gl")) return "vendor-map";
+            if (id.includes("xlsx")) return "vendor-xlsx";
           }
         },
       },
