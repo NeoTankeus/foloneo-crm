@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Save, Trash2, AlertTriangle } from "lucide-react";
 import { Modal } from "@/components/ui/overlays";
 import { Input, Select, Textarea } from "@/components/ui/primitives";
@@ -7,6 +7,9 @@ import { uid } from "@/lib/helpers";
 import { useDemoData } from "@/lib/supabase";
 import * as db from "@/lib/db";
 import type { CalendarEvent, Account, Commercial } from "@/types";
+
+// Type d'evenement qui par defaut s'attribue a un technicien (intervention terrain).
+const TECH_EVENT_TYPES: CalendarEvent["type"][] = ["intervention", "tache"];
 
 interface Props {
   open: boolean;
@@ -57,6 +60,18 @@ export function EventEditor({
   function patch<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((s) => ({ ...s, [k]: v }));
   }
+
+  // Commerciaux / techs actifs, regroupes par role pour un dropdown lisible.
+  // Ordre d'affichage : technicien > commercial > dirigeant (car le cas
+  // metier principal de l'agenda est l'intervention terrain).
+  const groupedAssignees = useMemo(() => {
+    const actifs = commerciaux.filter((c) => c.actif !== false);
+    return {
+      technicien: actifs.filter((c) => c.role === "technicien"),
+      commercial: actifs.filter((c) => c.role === "commercial"),
+      dirigeant: actifs.filter((c) => c.role === "dirigeant"),
+    };
+  }, [commerciaux]);
 
   async function save() {
     setSaving(true);
@@ -175,16 +190,38 @@ export function EventEditor({
             ))}
           </Select>
           <Select
-            label="Commercial"
+            label={TECH_EVENT_TYPES.includes(form.type) ? "Technicien assigné" : "Assigné à"}
             value={form.commercialId ?? ""}
             onChange={(e) => patch("commercialId", e.target.value || undefined)}
           >
-            <option value="">—</option>
-            {commerciaux.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.prenom} {c.nom}
-              </option>
-            ))}
+            <option value="">— Non assigné —</option>
+            {groupedAssignees.technicien.length > 0 && (
+              <optgroup label="Techniciens">
+                {groupedAssignees.technicien.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.prenom} {c.nom}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {groupedAssignees.commercial.length > 0 && (
+              <optgroup label="Commerciaux">
+                {groupedAssignees.commercial.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.prenom} {c.nom}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {groupedAssignees.dirigeant.length > 0 && (
+              <optgroup label="Direction">
+                {groupedAssignees.dirigeant.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.prenom} {c.nom}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </Select>
         </div>
         <Input

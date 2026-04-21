@@ -129,12 +129,29 @@ export function CalendarView({ state, setState }: Props) {
           onChange={(e) => setCommercialId(e.target.value)}
           className="max-w-[220px]"
         >
-          <option value="all">Tous les commerciaux</option>
-          {state.commerciaux.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.prenom} {c.nom}
-            </option>
-          ))}
+          <option value="all">Toute l'équipe</option>
+          {/* Techniciens en premier (cas metier : interventions terrain), puis commerciaux, puis direction */}
+          {(["technicien", "commercial", "dirigeant"] as const).map((role) => {
+            const group = state.commerciaux.filter(
+              (c) => c.role === role && c.actif !== false
+            );
+            if (group.length === 0) return null;
+            const label =
+              role === "technicien"
+                ? "Techniciens"
+                : role === "commercial"
+                ? "Commerciaux"
+                : "Direction";
+            return (
+              <optgroup key={role} label={label}>
+                {group.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.prenom} {c.nom}
+                  </option>
+                ))}
+              </optgroup>
+            );
+          })}
         </Select>
         <div className="flex-1" />
         <Button

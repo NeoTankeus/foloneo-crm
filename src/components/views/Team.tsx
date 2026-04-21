@@ -101,6 +101,9 @@ export function TeamView({ state, setState, settings }: Props) {
                     ? "amber"
                     : "red";
             const mgOuCom = rem.commissionBrute >= rem.minimumGaranti ? "commissions" : "MG";
+            // Les techniciens n'ont pas d'objectif ni de remuneration commerciale :
+            // on affiche une fiche profil condensee (identite + telephone) seulement.
+            const isTech = c.role === "technicien";
             return (
               <Card
                 key={c.id}
@@ -125,7 +128,19 @@ export function TeamView({ state, setState, settings }: Props) {
                   {!c.actif && <Badge tone="slate">Inactif</Badge>}
                 </div>
 
-                {/* Progression objectif */}
+                {isTech && (
+                  <div className="text-xs text-slate-600 dark:text-slate-400 space-y-1">
+                    {c.telephone && <div>Tél : {c.telephone}</div>}
+                    <div className="text-[11px] text-slate-500">
+                      Assignable aux interventions et tâches dans l'agenda.
+                    </div>
+                  </div>
+                )}
+
+                {/* Progression objectif — masquee pour les techniciens */}
+                {!isTech && (
+                <>
+
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="flex items-center gap-1 text-slate-600">
@@ -208,6 +223,8 @@ export function TeamView({ state, setState, settings }: Props) {
                     <Gift size={10} />
                     Leasing mois : {fmtEUR(mensuel.caLeasing)} (×48)
                   </div>
+                )}
+                </>
                 )}
               </Card>
             );

@@ -156,13 +156,16 @@ export function CommercialEditor({ open, commercial, onClose, onSaved, onDeleted
             <option value="commercial">Commercial</option>
             <option value="technicien">Technicien</option>
           </Select>
-          <Input
-            label="Objectif mensuel HT (€)"
-            type="number"
-            min={0}
-            value={form.objectifMensuel}
-            onChange={(e) => patch("objectifMensuel", Number(e.target.value))}
-          />
+          {/* Les techniciens n'ont pas d'objectif de signature */}
+          {form.role !== "technicien" && (
+            <Input
+              label="Objectif mensuel HT (€)"
+              type="number"
+              min={0}
+              value={form.objectifMensuel}
+              onChange={(e) => patch("objectifMensuel", Number(e.target.value))}
+            />
+          )}
         </div>
         <div>
           <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">
@@ -186,40 +189,43 @@ export function CommercialEditor({ open, commercial, onClose, onSaved, onDeleted
             />
           </div>
         </div>
-        <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
-          <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2">
-            Commissions (% du CA)
+        {/* Les techniciens n'ont pas de commissions sur le CA */}
+        {form.role !== "technicien" && (
+          <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
+            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2">
+              Commissions (% du CA)
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <Input
+                label="Achat %"
+                type="number"
+                min={0}
+                max={100}
+                step="0.1"
+                value={+(form.commissionTaux.achat * 100).toFixed(1)}
+                onChange={(e) => patchCommission("achat", Number(e.target.value) / 100)}
+              />
+              <Input
+                label="Leasing %"
+                type="number"
+                min={0}
+                max={100}
+                step="0.1"
+                value={+(form.commissionTaux.leasing * 100).toFixed(1)}
+                onChange={(e) => patchCommission("leasing", Number(e.target.value) / 100)}
+              />
+              <Input
+                label="Maintenance %"
+                type="number"
+                min={0}
+                max={100}
+                step="0.1"
+                value={+(form.commissionTaux.maintenance * 100).toFixed(1)}
+                onChange={(e) => patchCommission("maintenance", Number(e.target.value) / 100)}
+              />
+            </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <Input
-              label="Achat %"
-              type="number"
-              min={0}
-              max={100}
-              step="0.1"
-              value={+(form.commissionTaux.achat * 100).toFixed(1)}
-              onChange={(e) => patchCommission("achat", Number(e.target.value) / 100)}
-            />
-            <Input
-              label="Leasing %"
-              type="number"
-              min={0}
-              max={100}
-              step="0.1"
-              value={+(form.commissionTaux.leasing * 100).toFixed(1)}
-              onChange={(e) => patchCommission("leasing", Number(e.target.value) / 100)}
-            />
-            <Input
-              label="Maintenance %"
-              type="number"
-              min={0}
-              max={100}
-              step="0.1"
-              value={+(form.commissionTaux.maintenance * 100).toFixed(1)}
-              onChange={(e) => patchCommission("maintenance", Number(e.target.value) / 100)}
-            />
-          </div>
-        </div>
+        )}
         <label className="flex items-center gap-2 text-sm text-slate-600">
           <input
             type="checkbox"
