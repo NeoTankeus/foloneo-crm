@@ -10,6 +10,7 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 .claude/settings.local.json
+supabase/.temp
 *.suo
 *.ntvs*
 *.njsproj

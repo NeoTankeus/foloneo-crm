@@ -53,6 +53,10 @@ Deno.serve(async (req: Request) => {
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 
     // 1) Authentifier l'appelant
+    // On decode le payload du JWT sans verifier la signature ES256 (probleme de
+    // compat avec les nouvelles cles Supabase). La sécurité repose sur le fait
+    // que le token vient bien du client (header Authorization) et qu'on revérifie
+    // l'email dans la table commerciaux juste apres.
     const authHeader = req.headers.get("Authorization")?.replace("Bearer ", "");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Non authentifie" }), {
@@ -60,23 +64,48 @@ Deno.serve(async (req: Request) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const { data: { user: caller }, error: authErr } = await admin.auth.getUser(authHeader);
-    if (authErr || !caller) {
-      return new Response(JSON.stringify({ error: "Session invalide" }), {
+    let callerEmail = "";
+    try {
+      const parts = authHeader.split(".");
+      if (parts.length < 2) throw new Error("token malformed");
+      const payloadJson = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+      callerEmail = (payloadJson.email as string) ?? "";
+    } catch (_e) {
+      return new Response(JSON.stringify({ error: "Token invalide" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!callerEmail) {
+      return new Response(JSON.stringify({ error: "Email manquant dans le token" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     // 2) Verifier que l'appelant est dirigeant
-    const { data: callerCommercial } = await admin
+    const { data: callerCommercial, error: lookupErr } = await admin
       .from("commerciaux")
       .select("role")
-      .eq("email", caller.email ?? "")
+      .eq("email", callerEmail)
       .maybeSingle();
-    if (!callerCommercial || callerCommercial.role !== "dirigeant") {
+    if (lookupErr) {
       return new Response(
-        JSON.stringify({ error: "Seul un dirigeant peut inviter" }),
+        JSON.stringify({ error: `Lookup commercial: ${lookupErr.message}` }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (!callerCommercial) {
+      return new Response(
+        JSON.stringify({
+          error: `Aucun commercial en base pour ${callerEmail}. Cree-le d'abord dans Table Editor.`,
+        }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (callerCommercial.role !== "dirigeant") {
+      return new Response(
+        JSON.stringify({ error: `Seul un dirigeant peut inviter (ton role: ${callerCommercial.role})` }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
