@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
-import { Plus, UserCog, Target, TrendingUp } from "lucide-react";
+import { Plus, UserCog, Target, TrendingUp, UserPlus } from "lucide-react";
 import { Card, Badge } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/overlays";
 import { CommercialEditor } from "@/components/modals/CommercialEditor";
+import { InviteUserModal } from "@/components/modals/InviteUserModal";
+import { useAuth } from "@/hooks/useAuth";
 import { calcDevisTotaux } from "@/lib/calculations";
 import { fmtEUR, fmtPct, initials, upsertById, removeById, cx } from "@/lib/helpers";
 import type { AppState, Settings, Commercial } from "@/types";
@@ -15,10 +17,13 @@ interface Props {
 }
 
 export function TeamView({ state, setState, settings }: Props) {
+  const { currentCommercial } = useAuth();
+  const isDirigeant = currentCommercial?.role === "dirigeant";
   const [editor, setEditor] = useState<{ open: boolean; commercial: Commercial | null }>({
     open: false,
     commercial: null,
   });
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const stats = useMemo(() => {
     const monthStart = new Date();
@@ -48,17 +53,24 @@ export function TeamView({ state, setState, settings }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="text-xs text-slate-500">
           {state.commerciaux.length} membre{state.commerciaux.length > 1 ? "s" : ""}
         </div>
-        <Button
-          variant="gold"
-          icon={Plus}
-          onClick={() => setEditor({ open: true, commercial: null })}
-        >
-          Nouveau
-        </Button>
+        <div className="flex items-center gap-2">
+          {isDirigeant && (
+            <Button variant="gold" icon={UserPlus} onClick={() => setInviteOpen(true)}>
+              Inviter par email
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            icon={Plus}
+            onClick={() => setEditor({ open: true, commercial: null })}
+          >
+            Ajouter (sans mail)
+          </Button>
+        </div>
       </div>
 
       {state.commerciaux.length === 0 ? (
@@ -157,6 +169,13 @@ export function TeamView({ state, setState, settings }: Props) {
         }
         onDeleted={(id) =>
           setState((s) => ({ ...s, commerciaux: removeById(s.commerciaux, id) }))
+        }
+      />
+      <InviteUserModal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        onInvited={(c) =>
+          setState((s) => ({ ...s, commerciaux: upsertById(s.commerciaux, c) }))
         }
       />
     </div>
