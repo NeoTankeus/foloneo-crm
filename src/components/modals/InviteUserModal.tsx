@@ -64,15 +64,39 @@ export function InviteUserModal({ open, onClose, onInvited }: Props) {
       }
       const payload = data as {
         success?: boolean;
-        commercial?: unknown;
+        commercial?: Record<string, unknown>;
         error?: string;
         manualLink?: string | null;
+        linkWarning?: string | null;
       };
       if (!payload.success || !payload.commercial) {
         throw new Error(payload.error ?? "Reponse invalide");
       }
-      const commercial = payload.commercial as Commercial;
-      setSuccess(`Invitation envoyée à ${email}.`);
+      // L'Edge Function retourne la ligne DB en snake_case, on mappe en camelCase
+      // avant de la passer au state React (sinon crash de la vue Equipe).
+      const raw = payload.commercial;
+      const commercial: Commercial = {
+        id: String(raw.id),
+        nom: String(raw.nom ?? ""),
+        prenom: String(raw.prenom ?? ""),
+        email: String(raw.email ?? ""),
+        telephone: raw.telephone ? String(raw.telephone) : "",
+        role: (raw.role as Commercial["role"]) ?? "commercial",
+        objectifMensuel: Number(raw.objectif_mensuel ?? 0),
+        commissionTaux: {
+          achat: Number(raw.commission_achat ?? 0.08),
+          leasing: Number(raw.commission_leasing ?? 0.05),
+          maintenance: Number(raw.commission_maintenance ?? 0.1),
+        },
+        couleur: String(raw.couleur ?? "#60A5FA"),
+        actif: raw.actif === false ? false : true,
+      };
+      const successMsg = payload.manualLink
+        ? `Utilisateur créé pour ${email}. Copie le lien ci-dessous et envoie-le à la personne.`
+        : payload.linkWarning
+          ? `Utilisateur créé pour ${email}. Pas de lien auto : ${payload.linkWarning}. La personne peut cliquer "Mot de passe oublié" sur l'écran de connexion.`
+          : `Utilisateur créé pour ${email}.`;
+      setSuccess(successMsg);
       setManualLink(payload.manualLink ?? null);
       onInvited(commercial);
     } catch (e) {

@@ -132,15 +132,21 @@ Deno.serve(async (req: Request) => {
     // Ce lien ne declenche pas d'envoi SMTP, on le retourne au client pour qu'il
     // soit transmis par le canal de son choix (SMS, WhatsApp, mail perso).
     let manualLink: string | null = null;
+    let linkWarning: string | null = null;
     try {
-      const { data: linkData } = await admin.auth.admin.generateLink({
+      const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
         type: "recovery",
         email,
         options: { redirectTo: APP_URL || undefined },
       });
-      manualLink = linkData?.properties?.action_link ?? null;
-    } catch (_e) {
-      /* pas de lien mais le user est cree, ce n'est pas bloquant */
+      if (linkErr) {
+        linkWarning = `generateLink: ${linkErr.message}`;
+      } else {
+        manualLink = linkData?.properties?.action_link ?? null;
+        if (!manualLink) linkWarning = "generateLink: action_link manquant";
+      }
+    } catch (e) {
+      linkWarning = `generateLink exception: ${e instanceof Error ? e.message : "unknown"}`;
     }
 
     // 4) Creer la fiche commercial liee
@@ -173,7 +179,7 @@ Deno.serve(async (req: Request) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, commercial, manualLink }),
+      JSON.stringify({ success: true, commercial, manualLink, linkWarning }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
