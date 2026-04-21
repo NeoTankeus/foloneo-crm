@@ -18,4 +18,4 @@ delete from public.accounts;
 
 -- Optionnel : supprimer les commerciaux demo (Julien Martin, Sophie Laurent)
 -- en gardant Stephane. Decommente la ligne suivante si tu veux demarrer seul.
--- delete from public.commerciaux where email != 'stephanepitaud@foloneo.fr';
+delete from public.commerciaux where email != 'stephanepitaud@foloneo.fr';

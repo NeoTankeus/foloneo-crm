@@ -38,7 +38,28 @@ export function InviteUserModal({ open, onClose, onInvited }: Props) {
       const { data, error } = await supabase.functions.invoke("invite-user", {
         body: { email, prenom, nom, telephone, role, objectifMensuel, couleur },
       });
-      if (error) throw error;
+      // Recupere le vrai message d'erreur renvoye par la function
+      // (par defaut le SDK Supabase donne "Edge Function returned a non-2xx status code"
+      // ce qui ne dit rien sur la vraie cause)
+      if (error) {
+        let detail: string = error.message;
+        const ctx = (error as unknown as { context?: Response }).context;
+        if (ctx && typeof ctx.text === "function") {
+          try {
+            const body = await ctx.text();
+            try {
+              const json = JSON.parse(body) as { error?: string };
+              if (json.error) detail = json.error;
+              else detail = body || detail;
+            } catch {
+              if (body) detail = body;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        throw new Error(detail);
+      }
       const payload = data as { success?: boolean; commercial?: unknown; error?: string };
       if (!payload.success || !payload.commercial) {
         throw new Error(payload.error ?? "Reponse invalide");
