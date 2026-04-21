@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { UserPlus, AlertTriangle, Mail, CheckCircle2 } from "lucide-react";
+import { UserPlus, AlertTriangle, Mail, CheckCircle2, Copy, Check } from "lucide-react";
 import { Modal } from "@/components/ui/overlays";
 import { Input, Select } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
@@ -25,6 +25,8 @@ export function InviteUserModal({ open, onClose, onInvited }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [manualLink, setManualLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState<boolean>(false);
 
   async function invite() {
     if (!supabase) {
@@ -60,21 +62,19 @@ export function InviteUserModal({ open, onClose, onInvited }: Props) {
         }
         throw new Error(detail);
       }
-      const payload = data as { success?: boolean; commercial?: unknown; error?: string };
+      const payload = data as {
+        success?: boolean;
+        commercial?: unknown;
+        error?: string;
+        manualLink?: string | null;
+      };
       if (!payload.success || !payload.commercial) {
         throw new Error(payload.error ?? "Reponse invalide");
       }
       const commercial = payload.commercial as Commercial;
-      setSuccess(
-        `Invitation envoyee a ${email}. Il/elle va recevoir un mail pour definir son mot de passe.`
-      );
+      setSuccess(`Invitation envoyée à ${email}.`);
+      setManualLink(payload.manualLink ?? null);
       onInvited(commercial);
-      // Reset apres succes
-      setEmail("");
-      setPrenom("");
-      setNom("");
-      setTelephone("");
-      setObjectifMensuel(25000);
     } catch (e) {
       const msg =
         e instanceof Error ? e.message : "Erreur d'invitation (Edge Function deployee ?)";
@@ -178,8 +178,56 @@ export function InviteUserModal({ open, onClose, onInvited }: Props) {
           </div>
         )}
         {success && (
-          <div className="text-xs text-emerald-700 flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/30 p-2 rounded-lg">
-            <CheckCircle2 size={12} /> {success}
+          <div className="text-xs text-emerald-700 flex items-start gap-1 bg-emerald-50 dark:bg-emerald-950/30 p-2 rounded-lg">
+            <CheckCircle2 size={12} className="mt-0.5 flex-shrink-0" />
+            <div>{success}</div>
+          </div>
+        )}
+        {manualLink && (
+          <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 space-y-2">
+            <div className="text-xs font-semibold text-amber-900 dark:text-amber-300">
+              Lien de connexion manuel (en cas de non-réception du mail)
+            </div>
+            <div className="text-[11px] text-amber-800 dark:text-amber-300">
+              Copie ce lien et envoie-le à {email} par SMS, WhatsApp ou mail perso. Il lui
+              suffira de cliquer pour définir son mot de passe et se connecter.
+            </div>
+            <div className="flex gap-2">
+              <input
+                readOnly
+                value={manualLink}
+                onFocus={(e) => e.currentTarget.select()}
+                className="flex-1 h-8 px-2 text-[10px] rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 font-mono"
+              />
+              <Button
+                size="sm"
+                variant={copied ? "primary" : "gold"}
+                icon={copied ? Check : Copy}
+                onClick={async () => {
+                  await navigator.clipboard.writeText(manualLink);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+              >
+                {copied ? "Copié" : "Copier"}
+              </Button>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                // Nouveau invité : reset le formulaire pour enchainer une autre invitation
+                setEmail("");
+                setPrenom("");
+                setNom("");
+                setTelephone("");
+                setObjectifMensuel(25000);
+                setManualLink(null);
+                setSuccess(null);
+              }}
+            >
+              Inviter quelqu'un d'autre
+            </Button>
           </div>
         )}
       </div>

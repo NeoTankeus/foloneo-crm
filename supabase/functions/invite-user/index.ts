@@ -125,6 +125,21 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // 3b) Genere aussi un lien "recovery" manuel comme filet de secours
+    // si le SMTP Supabase ne livre pas le mail (spam, OVH filters, rate-limit).
+    // On peut copier-coller ce lien et le transmettre par un autre canal.
+    let manualLink: string | null = null;
+    try {
+      const { data: linkData } = await admin.auth.admin.generateLink({
+        type: "recovery",
+        email,
+        options: { redirectTo: APP_URL || undefined },
+      });
+      manualLink = linkData?.properties?.action_link ?? null;
+    } catch (_e) {
+      /* on ignore, c'est juste un bonus */
+    }
+
     // 4) Creer la fiche commercial liee
     const { data: commercial, error: cErr } = await admin
       .from("commerciaux")
@@ -155,7 +170,7 @@ Deno.serve(async (req: Request) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, commercial }),
+      JSON.stringify({ success: true, commercial, manualLink }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
