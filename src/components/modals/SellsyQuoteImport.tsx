@@ -28,6 +28,10 @@ type FieldKey =
   | "montantHT"
   | "montantTTC"
   | "statut"
+  | "libelle"
+  | "quantite"
+  | "prixUnitHT"
+  | "totalLigneHT"
   | "__ignore__";
 
 const FIELD_LABELS: Record<Exclude<FieldKey, "__ignore__">, string> = {
@@ -37,6 +41,10 @@ const FIELD_LABELS: Record<Exclude<FieldKey, "__ignore__">, string> = {
   montantHT: "Montant HT *",
   montantTTC: "Montant TTC",
   statut: "Statut",
+  libelle: "Libellé / Désignation (ligne)",
+  quantite: "Quantité (ligne)",
+  prixUnitHT: "Prix unitaire HT (ligne)",
+  totalLigneHT: "Total HT de la ligne",
 };
 
 // Synonymes pour auto-detection (FR + EN). Ordre : plus specifique d'abord.
@@ -44,9 +52,13 @@ const HEADER_HINTS: Record<Exclude<FieldKey, "__ignore__">, string[]> = {
   numero: ["numero devis", "numero de devis", "n devis", "num devis", "numero", "reference", "reference devis", "number"],
   dateEmission: ["date emission", "date creation", "date d'emission", "date", "issued", "cree le"],
   raisonSociale: ["raison sociale", "client", "nom client", "societe", "company"],
-  montantHT: ["montant ht", "total ht", "ht", "amount ht", "base ht"],
-  montantTTC: ["montant ttc", "total ttc", "ttc", "amount ttc"],
+  montantHT: ["montant ht total", "total general ht", "montant ht", "total ht", "amount ht", "base ht"],
+  montantTTC: ["montant ttc total", "total general ttc", "montant ttc", "total ttc", "ttc", "amount ttc"],
   statut: ["statut", "etat", "status"],
+  libelle: ["designation", "libelle", "description", "produit", "article", "intitule", "item"],
+  quantite: ["quantite", "qte", "qty", "quantity"],
+  prixUnitHT: ["prix unitaire ht", "prix unit ht", "pu ht", "unit price ht", "tarif unitaire"],
+  totalLigneHT: ["total ligne ht", "total ligne", "sous total ligne", "line total"],
 };
 
 // Map un statut Sellsy vers notre QuoteStatus. Valeurs robustes au francais.
@@ -91,9 +103,28 @@ export function SellsyQuoteImport({ open, accounts, onClose, onImported }: Props
     const missing: string[] = [];
     if (!vals.includes("numero")) missing.push("Numéro du devis");
     if (!vals.includes("raisonSociale")) missing.push("Client (raison sociale)");
-    if (!vals.includes("montantHT")) missing.push("Montant HT");
+    const hasLibelle = vals.includes("libelle");
+    const hasPrixOuTotal = vals.includes("prixUnitHT") || vals.includes("totalLigneHT");
+    // Mode detail : on a libelle + prix/total -> montant HT devient optionnel
+    // (calcule par somme des lignes). Sinon montant HT est requis.
+    const detailMode = hasLibelle && hasPrixOuTotal;
+    if (!detailMode && !vals.includes("montantHT")) missing.push("Montant HT");
     return missing;
   }, [mapping]);
+
+  // Comptage devis uniques vs lignes pour affichage bouton + note detail
+  const stats = useMemo(() => {
+    if (!file) return { nbDevis: 0, nbLignes: 0, isDetail: false };
+    const numCol = Object.entries(mapping).find(([, f]) => f === "numero")?.[0];
+    if (!numCol) return { nbDevis: 0, nbLignes: file.rows.length, isDetail: false };
+    const uniqNum = new Set<string>();
+    for (const r of file.rows) {
+      const v = r[numCol];
+      if (v !== null && v !== undefined && String(v).trim()) uniqNum.add(String(v).trim());
+    }
+    const isDetail = file.rows.length > uniqNum.size;
+    return { nbDevis: uniqNum.size, nbLignes: file.rows.length, isDetail };
+  }, [file, mapping]);
 
   async function handleFile(f: File) {
     setResult(null);
@@ -118,11 +149,11 @@ export function SellsyQuoteImport({ open, accounts, onClose, onImported }: Props
     let ok = 0;
     let skipped = 0;
     let createdAccounts = 0;
+    let totalLignesDetail = 0;
     const importedQuotes: Quote[] = [];
     const newAccounts: Account[] = [];
 
     // Pool de comptes qui grandit au fil de l'import pour eviter les doublons
-    // (si 2 devis Sellsy pour le meme client nouveau, un seul compte cree)
     const accountsPool: Account[] = [...accounts];
 
     const getCol = (row: Record<string, unknown>, field: FieldKey): string => {
@@ -132,29 +163,47 @@ export function SellsyQuoteImport({ open, accounts, onClose, onImported }: Props
       return v === null || v === undefined ? "" : String(v).trim();
     };
 
+    // 1. Regroupement par numero de devis. Un export "detail lignes" aura
+    //    plusieurs lignes par numero. Un export "liste simple" 1 ligne par numero.
+    const groups = new Map<string, Record<string, unknown>[]>();
+    const firstRowIdx = new Map<string, number>();
     for (let i = 0; i < file.rows.length; i++) {
       const row = file.rows[i];
       const numero = getCol(row, "numero");
-      const raisonSociale = getCol(row, "raisonSociale");
-      const montantHT = parseNumberFR(getCol(row, "montantHT"));
-
-      if (!numero || !raisonSociale) {
+      if (!numero) {
         skipped++;
         continue;
       }
-      if (montantHT <= 0) {
-        // On tolere montant nul (devis brouillon) mais on prefere signaler
-        errors.push(`Ligne ${i + 2} (${numero}) : montant HT nul ou illisible — devis importé à 0 €.`);
+      if (!groups.has(numero)) {
+        groups.set(numero, []);
+        firstRowIdx.set(numero, i);
+      }
+      groups.get(numero)!.push(row);
+    }
+
+    // 2. Mapping actif des champs "ligne" (true si le fichier a ces colonnes)
+    const mapped = Object.values(mapping);
+    const hasLibelle = mapped.includes("libelle");
+    const hasPrixOuTotal = mapped.includes("prixUnitHT") || mapped.includes("totalLigneHT");
+
+    // 3. Pour chaque groupe, construire header + lignes
+    for (const [numero, rows] of groups.entries()) {
+      const firstRow = rows[0];
+      const firstLineNum = (firstRowIdx.get(numero) ?? 0) + 2; // +1 pour header, +1 pour offset
+
+      const raisonSociale = getCol(firstRow, "raisonSociale");
+      if (!raisonSociale) {
+        skipped += rows.length;
+        continue;
       }
 
       try {
-        // 1. Resoudre / creer le compte
+        // Resoudre compte
         const resolved = useDemoData
           ? { account: accountsPool[0] ?? ({ id: "demo" } as Account), created: false }
           : await resolveOrCreateAccount(raisonSociale, accountsPool);
         if (!resolved) {
-          errors.push(`Ligne ${i + 2} (${numero}) : raison sociale vide.`);
-          skipped++;
+          skipped += rows.length;
           continue;
         }
         if (resolved.created) {
@@ -163,23 +212,52 @@ export function SellsyQuoteImport({ open, accounts, onClose, onImported }: Props
           createdAccounts++;
         }
 
-        // 2. Construire la ligne synthetique pour preserver le total
-        const ligneSynthetique = {
-          id: crypto.randomUUID(),
-          libelle: `Devis importé depuis Sellsy — ${numero}`,
-          quantite: 1,
-          prixAchatHT: 0,
-          prixVenteHT: montantHT,
-        };
+        // Construire les lignes
+        let lignes: Quote["lignes"] = [];
+        if (hasLibelle && hasPrixOuTotal && rows.length > 0) {
+          // Export "detail" -> une ligne reelle par row (si libelle rempli)
+          for (const r of rows) {
+            const libelle = getCol(r, "libelle");
+            if (!libelle) continue;
+            const quantite = parseNumberFR(getCol(r, "quantite")) || 1;
+            const puht = parseNumberFR(getCol(r, "prixUnitHT"));
+            const totalHT = parseNumberFR(getCol(r, "totalLigneHT"));
+            // Prix unitaire : celui fourni, ou total/quantite si seul le total existe
+            const prix = puht > 0 ? puht : quantite > 0 ? totalHT / quantite : 0;
+            lignes.push({
+              id: crypto.randomUUID(),
+              libelle,
+              quantite,
+              prixAchatHT: 0,
+              prixVenteHT: prix,
+            });
+          }
+          totalLignesDetail += lignes.length;
+        }
 
-        const statut = mapStatut(getCol(row, "statut"));
-        const dateIso = parseDateAny(getCol(row, "dateEmission"));
+        if (lignes.length === 0) {
+          // Fallback synthetique : une seule ligne au montant total du devis
+          const montantHT = parseNumberFR(getCol(firstRow, "montantHT"));
+          lignes = [{
+            id: crypto.randomUUID(),
+            libelle: `Devis importé depuis Sellsy — ${numero}`,
+            quantite: 1,
+            prixAchatHT: 0,
+            prixVenteHT: montantHT,
+          }];
+          if (montantHT <= 0) {
+            errors.push(`${numero} : aucune ligne détaillée et montant HT nul — devis importé à 0 €.`);
+          }
+        }
+
+        const statut = mapStatut(getCol(firstRow, "statut"));
+        const dateIso = parseDateAny(getCol(firstRow, "dateEmission"));
 
         const payload: Omit<Quote, "id" | "createdAt"> = {
           numero,
           accountId: resolved.account.id,
           commercialId: currentCommercial.id,
-          lignes: [ligneSynthetique],
+          lignes,
           heuresMO: 0,
           tauxMO: 65,
           fraisDeplacement: 0,
@@ -195,7 +273,7 @@ export function SellsyQuoteImport({ open, accounts, onClose, onImported }: Props
         if (useDemoData) {
           saved = {
             ...payload,
-            id: `demo_q_${Date.now()}_${i}`,
+            id: `demo_q_${Date.now()}_${ok}`,
             createdAt: dateIso ?? new Date().toISOString(),
           };
         } else {
@@ -204,8 +282,12 @@ export function SellsyQuoteImport({ open, accounts, onClose, onImported }: Props
         importedQuotes.push(saved);
         ok++;
       } catch (e) {
-        errors.push(`Ligne ${i + 2} (${numero || "?"}) : ${(e as Error).message}`);
+        errors.push(`Devis ${numero} (ligne ${firstLineNum}) : ${(e as Error).message}`);
       }
+    }
+
+    if (totalLignesDetail > 0) {
+      errors.unshift(`${totalLignesDetail} ligne${totalLignesDetail > 1 ? "s" : ""} de détail importée${totalLignesDetail > 1 ? "s" : ""} depuis les colonnes "${FIELD_LABELS.libelle}"/"${FIELD_LABELS.prixUnitHT}".`);
     }
 
     setResult({ ok, skipped, createdAccounts, errors });
@@ -245,7 +327,7 @@ export function SellsyQuoteImport({ open, accounts, onClose, onImported }: Props
               onClick={doImport}
               disabled={importing || missingRequired.length > 0 || !currentCommercial}
             >
-              {importing ? "Import…" : `Importer ${file.rows.length} devis`}
+              {importing ? "Import…" : `Importer ${stats.nbDevis || file.rows.length} devis`}
             </Button>
           )}
         </>
@@ -261,6 +343,7 @@ export function SellsyQuoteImport({ open, accounts, onClose, onImported }: Props
           mapping={mapping}
           setMapping={setMapping}
           missingRequired={missingRequired}
+          stats={stats}
         />
       )}
     </Modal>
@@ -329,20 +412,33 @@ function MappingView({
   mapping,
   setMapping,
   missingRequired,
+  stats,
 }: {
   file: ParsedFile;
   mapping: Record<string, FieldKey>;
   setMapping: React.Dispatch<React.SetStateAction<Record<string, FieldKey>>>;
   missingRequired: string[];
+  stats: { nbDevis: number; nbLignes: number; isDetail: boolean };
 }) {
   const preview = file.rows.slice(0, 5);
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex items-center gap-2 text-sm flex-wrap">
         <FileSpreadsheet size={16} className="text-[#C9A961]" />
         <span className="font-semibold">{file.filename}</span>
-        <Badge tone="slate">{file.rows.length} devis</Badge>
+        <Badge tone="slate">{stats.nbDevis} devis</Badge>
+        {stats.isDetail && (
+          <Badge tone="gold">Export détaillé : {stats.nbLignes} lignes</Badge>
+        )}
       </div>
+      {stats.isDetail && (
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 text-xs">
+          <Info size={14} className="flex-shrink-0 mt-0.5" />
+          <div>
+            <strong>Export détaillé détecté</strong> : plusieurs lignes par numéro de devis. Les lignes seront reconstruites à partir des colonnes <em>Libellé / Quantité / Prix unit HT</em> — plus de ligne synthétique.
+          </div>
+        </div>
+      )}
 
       {missingRequired.length > 0 && (
         <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 text-xs">

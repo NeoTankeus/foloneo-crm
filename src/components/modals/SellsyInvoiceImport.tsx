@@ -31,6 +31,10 @@ type FieldKey =
   | "montantTVA"
   | "montantTTC"
   | "statut"
+  | "libelle"
+  | "quantite"
+  | "prixUnitHT"
+  | "totalLigneHT"
   | "__ignore__";
 
 const FIELD_LABELS: Record<Exclude<FieldKey, "__ignore__">, string> = {
@@ -43,6 +47,10 @@ const FIELD_LABELS: Record<Exclude<FieldKey, "__ignore__">, string> = {
   montantTVA: "Montant TVA",
   montantTTC: "Montant TTC",
   statut: "Statut",
+  libelle: "Libellé / Désignation (ligne)",
+  quantite: "Quantité (ligne)",
+  prixUnitHT: "Prix unitaire HT (ligne)",
+  totalLigneHT: "Total HT de la ligne",
 };
 
 const HEADER_HINTS: Record<Exclude<FieldKey, "__ignore__">, string[]> = {
@@ -51,10 +59,14 @@ const HEADER_HINTS: Record<Exclude<FieldKey, "__ignore__">, string[]> = {
   dateEcheance: ["date echeance", "echeance", "date d'echeance", "due date"],
   datePaiement: ["date paiement", "date de paiement", "paye le", "payment date", "paid at"],
   raisonSociale: ["raison sociale", "client", "nom client", "societe", "company", "destinataire"],
-  montantHT: ["montant ht", "total ht", "ht", "amount ht"],
-  montantTVA: ["montant tva", "total tva", "tva", "amount tax", "vat"],
-  montantTTC: ["montant ttc", "total ttc", "ttc", "amount ttc", "total"],
+  montantHT: ["montant ht total", "total general ht", "montant ht", "total ht", "amount ht"],
+  montantTVA: ["montant tva total", "montant tva", "total tva", "tva", "amount tax", "vat"],
+  montantTTC: ["montant ttc total", "total general ttc", "montant ttc", "total ttc", "ttc", "amount ttc", "total"],
   statut: ["statut", "etat", "status", "payee", "paye"],
+  libelle: ["designation", "libelle", "description", "produit", "article", "intitule", "item"],
+  quantite: ["quantite", "qte", "qty", "quantity"],
+  prixUnitHT: ["prix unitaire ht", "prix unit ht", "pu ht", "unit price ht", "tarif unitaire"],
+  totalLigneHT: ["total ligne ht", "total ligne", "sous total ligne", "line total"],
 };
 
 function mapStatut(raw: string, datePaiement: string | null): InvoiceStatus {
@@ -100,10 +112,25 @@ export function SellsyInvoiceImport({ open, accounts, onClose, onImported }: Pro
     const missing: string[] = [];
     if (!vals.includes("numero")) missing.push("Numéro de facture");
     if (!vals.includes("raisonSociale")) missing.push("Client (raison sociale)");
-    if (!vals.includes("montantHT")) missing.push("Montant HT");
     if (!vals.includes("dateEmission")) missing.push("Date d'émission");
+    const hasLibelle = vals.includes("libelle");
+    const hasPrixOuTotal = vals.includes("prixUnitHT") || vals.includes("totalLigneHT");
+    const detailMode = hasLibelle && hasPrixOuTotal;
+    if (!detailMode && !vals.includes("montantHT")) missing.push("Montant HT");
     return missing;
   }, [mapping]);
+
+  const stats = useMemo(() => {
+    if (!file) return { nbFactures: 0, nbLignes: 0, isDetail: false };
+    const numCol = Object.entries(mapping).find(([, f]) => f === "numero")?.[0];
+    if (!numCol) return { nbFactures: 0, nbLignes: file.rows.length, isDetail: false };
+    const uniq = new Set<string>();
+    for (const r of file.rows) {
+      const v = r[numCol];
+      if (v !== null && v !== undefined && String(v).trim()) uniq.add(String(v).trim());
+    }
+    return { nbFactures: uniq.size, nbLignes: file.rows.length, isDetail: file.rows.length > uniq.size };
+  }, [file, mapping]);
 
   async function handleFile(f: File) {
     setResult(null);
@@ -128,6 +155,7 @@ export function SellsyInvoiceImport({ open, accounts, onClose, onImported }: Pro
     let ok = 0;
     let skipped = 0;
     let createdAccounts = 0;
+    let totalLignesDetail = 0;
     const imported: Invoice[] = [];
     const newAccounts: Account[] = [];
     const accountsPool: Account[] = [...accounts];
@@ -139,14 +167,29 @@ export function SellsyInvoiceImport({ open, accounts, onClose, onImported }: Pro
       return v === null || v === undefined ? "" : String(v).trim();
     };
 
-    for (let i = 0; i < file.rows.length; i++) {
-      const row = file.rows[i];
+    // Regroupement par numero (detail -> plusieurs lignes par numero)
+    const groups = new Map<string, Record<string, unknown>[]>();
+    for (const row of file.rows) {
       const numero = getCol(row, "numero");
-      const raisonSociale = getCol(row, "raisonSociale");
-      const dateEmission = parseDateAny(getCol(row, "dateEmission"));
-
-      if (!numero || !raisonSociale || !dateEmission) {
+      if (!numero) {
         skipped++;
+        continue;
+      }
+      if (!groups.has(numero)) groups.set(numero, []);
+      groups.get(numero)!.push(row);
+    }
+
+    const mapped = Object.values(mapping);
+    const hasLibelle = mapped.includes("libelle");
+    const hasPrixOuTotal = mapped.includes("prixUnitHT") || mapped.includes("totalLigneHT");
+
+    for (const [numero, rows] of groups.entries()) {
+      const firstRow = rows[0];
+      const raisonSociale = getCol(firstRow, "raisonSociale");
+      const dateEmission = parseDateAny(getCol(firstRow, "dateEmission"));
+
+      if (!raisonSociale || !dateEmission) {
+        skipped += rows.length;
         continue;
       }
 
@@ -155,7 +198,7 @@ export function SellsyInvoiceImport({ open, accounts, onClose, onImported }: Pro
           ? { account: accountsPool[0] ?? ({ id: "demo" } as Account), created: false }
           : await resolveOrCreateAccount(raisonSociale, accountsPool);
         if (!resolved) {
-          skipped++;
+          skipped += rows.length;
           continue;
         }
         if (resolved.created) {
@@ -164,21 +207,44 @@ export function SellsyInvoiceImport({ open, accounts, onClose, onImported }: Pro
           createdAccounts++;
         }
 
-        const montantHT = parseNumberFR(getCol(row, "montantHT"));
-        const montantTVA = parseNumberFR(getCol(row, "montantTVA"));
-        let montantTTC = parseNumberFR(getCol(row, "montantTTC"));
+        // Construire les lignes si colonnes ligne mappees
+        const lignesDetail: { id: string; libelle: string; quantite: number; prixAchatHT: number; prixVenteHT: number }[] = [];
+        if (hasLibelle && hasPrixOuTotal) {
+          for (const r of rows) {
+            const libelle = getCol(r, "libelle");
+            if (!libelle) continue;
+            const quantite = parseNumberFR(getCol(r, "quantite")) || 1;
+            const puht = parseNumberFR(getCol(r, "prixUnitHT"));
+            const totalHT = parseNumberFR(getCol(r, "totalLigneHT"));
+            const prix = puht > 0 ? puht : quantite > 0 ? totalHT / quantite : 0;
+            lignesDetail.push({
+              id: crypto.randomUUID(),
+              libelle,
+              quantite,
+              prixAchatHT: 0,
+              prixVenteHT: prix,
+            });
+          }
+          totalLignesDetail += lignesDetail.length;
+        }
+
+        // Montants : ceux fournis ou recalcules depuis les lignes
+        let montantHT = parseNumberFR(getCol(firstRow, "montantHT"));
+        const montantTVA = parseNumberFR(getCol(firstRow, "montantTVA"));
+        let montantTTC = parseNumberFR(getCol(firstRow, "montantTTC"));
+        if (montantHT === 0 && lignesDetail.length > 0) {
+          montantHT = lignesDetail.reduce((s, l) => s + l.prixVenteHT * l.quantite, 0);
+        }
         if (montantTTC === 0 && montantHT > 0) {
-          // Fallback : TTC = HT + TVA (ou HT si pas de TVA, rare)
           montantTTC = montantHT + (montantTVA > 0 ? montantTVA : montantHT * 0.2);
         }
 
-        const datePaiement = parseDateAny(getCol(row, "datePaiement"));
+        const datePaiement = parseDateAny(getCol(firstRow, "datePaiement"));
         const dateEcheance =
-          parseDateAny(getCol(row, "dateEcheance")) ??
-          // Fallback : echeance = emission + 30 jours
+          parseDateAny(getCol(firstRow, "dateEcheance")) ??
           new Date(new Date(dateEmission).getTime() + 30 * 86400000).toISOString().slice(0, 10);
 
-        const statut = mapStatut(getCol(row, "statut"), datePaiement);
+        const statut = mapStatut(getCol(firstRow, "statut"), datePaiement);
 
         const payload: Omit<Invoice, "id"> = {
           numero,
@@ -192,20 +258,24 @@ export function SellsyInvoiceImport({ open, accounts, onClose, onImported }: Pro
           dateEmission,
           dateEcheance,
           datePaiement: datePaiement ?? undefined,
-          lignes: [],
+          lignes: lignesDetail,
         };
 
         let saved: Invoice;
         if (useDemoData) {
-          saved = { ...payload, id: `demo_f_${Date.now()}_${i}` };
+          saved = { ...payload, id: `demo_f_${Date.now()}_${ok}` };
         } else {
           saved = await db.createInvoice(payload);
         }
         imported.push(saved);
         ok++;
       } catch (e) {
-        errors.push(`Ligne ${i + 2} (${numero || "?"}) : ${(e as Error).message}`);
+        errors.push(`Facture ${numero} : ${(e as Error).message}`);
       }
+    }
+
+    if (totalLignesDetail > 0) {
+      errors.unshift(`${totalLignesDetail} ligne${totalLignesDetail > 1 ? "s" : ""} de détail importée${totalLignesDetail > 1 ? "s" : ""}.`);
     }
 
     setResult({ ok, skipped, createdAccounts, errors });
@@ -245,7 +315,7 @@ export function SellsyInvoiceImport({ open, accounts, onClose, onImported }: Pro
               onClick={doImport}
               disabled={importing || missingRequired.length > 0}
             >
-              {importing ? "Import…" : `Importer ${file.rows.length} factures`}
+              {importing ? "Import…" : `Importer ${stats.nbFactures || file.rows.length} factures`}
             </Button>
           )}
         </>
@@ -261,6 +331,7 @@ export function SellsyInvoiceImport({ open, accounts, onClose, onImported }: Pro
           mapping={mapping}
           setMapping={setMapping}
           missingRequired={missingRequired}
+          stats={stats}
         />
       )}
     </Modal>
@@ -329,20 +400,33 @@ function MappingView({
   mapping,
   setMapping,
   missingRequired,
+  stats,
 }: {
   file: ParsedFile;
   mapping: Record<string, FieldKey>;
   setMapping: React.Dispatch<React.SetStateAction<Record<string, FieldKey>>>;
   missingRequired: string[];
+  stats: { nbFactures: number; nbLignes: number; isDetail: boolean };
 }) {
   const preview = file.rows.slice(0, 5);
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex items-center gap-2 text-sm flex-wrap">
         <FileSpreadsheet size={16} className="text-[#C9A961]" />
         <span className="font-semibold">{file.filename}</span>
-        <Badge tone="slate">{file.rows.length} factures</Badge>
+        <Badge tone="slate">{stats.nbFactures} factures</Badge>
+        {stats.isDetail && (
+          <Badge tone="gold">Export détaillé : {stats.nbLignes} lignes</Badge>
+        )}
       </div>
+      {stats.isDetail && (
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 text-xs">
+          <Info size={14} className="flex-shrink-0 mt-0.5" />
+          <div>
+            <strong>Export détaillé détecté</strong> : lignes de produits reconstruites depuis les colonnes <em>Libellé / Quantité / Prix unit HT</em>.
+          </div>
+        </div>
+      )}
 
       {missingRequired.length > 0 && (
         <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 text-xs">
