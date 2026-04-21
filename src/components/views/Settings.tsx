@@ -278,9 +278,9 @@ export function SettingsView({ state, setState, reload }: Props) {
       <Card className="p-5">
         <div className="flex items-center gap-2 mb-3">
           <Percent size={16} className="text-[#C9A961]" />
-          <h2 className="font-semibold">Installation et objectifs</h2>
+          <h2 className="font-semibold">Installation, objectifs et rémunération</h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Input
             label="Taux horaire MO (€/h)"
             type="number"
@@ -296,12 +296,25 @@ export function SettingsView({ state, setState, reload }: Props) {
             onChange={(e) => patch("fraisDeplacement", Number(e.target.value))}
           />
           <Input
-            label="Objectif mensuel défaut (€)"
+            label="Objectif mensuel défaut (€ CA HT)"
             type="number"
             min={0}
             value={form.objectifMensuelDefaut}
             onChange={(e) => patch("objectifMensuelDefaut", Number(e.target.value))}
+            hint="Plan 2026 : 24 000 €"
           />
+          <Input
+            label="Minimum Garanti commercial (€ brut/mois)"
+            type="number"
+            min={0}
+            value={form.minimumGaranti}
+            onChange={(e) => patch("minimumGaranti", Number(e.target.value))}
+            hint="Plan 2026 : 1 823 €"
+          />
+        </div>
+        <div className="text-[11px] text-slate-500 mt-2">
+          Les paliers de commission (0 % / 2,5 % / 5 % / 10 % / 15 %) sont définis dans le
+          plan de rémunération 2026 et codés dans src/lib/rem.ts.
         </div>
       </Card>
 

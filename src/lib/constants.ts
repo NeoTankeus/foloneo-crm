@@ -38,7 +38,8 @@ export const DEFAULT_SETTINGS: Settings = {
   provisionEvolutions: 0.08,
   tauxMO: 65,
   fraisDeplacement: 80,
-  objectifMensuelDefaut: 25000,
+  objectifMensuelDefaut: 24000,
+  minimumGaranti: 1823,
   commissionTaux: { achat: 0.08, leasing: 0.05, maintenance: 0.10 },
   tva: 0.20,
   societe: {

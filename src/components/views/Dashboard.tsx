@@ -21,7 +21,7 @@ import {
 import { Card, Badge } from "@/components/ui/primitives";
 import { Stat } from "@/components/ui/overlays";
 import { ETAPES } from "@/lib/constants";
-import { calcDevisTotaux } from "@/lib/calculations";
+import { calcCommissionMensuelle, caCommercialPeriode, monthBounds } from "@/lib/rem";
 import { fmtEUR, fmtPct, daysAgo, daysUntil, cx, initials } from "@/lib/helpers";
 import type { AppState, Settings } from "@/types";
 
@@ -154,36 +154,20 @@ export function Dashboard({ state, settings, commercialFilter, periodFilter }: D
     [deals]
   );
 
-  // Classement commerciaux
+  // Classement commerciaux — utilise la grille de remuneration 2026
   const ranking = useMemo(() => {
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
+    const { from, to } = monthBounds();
     return state.commerciaux
       .filter((c) => c.actif !== false)
       .map((c) => {
-        const dealsCom = state.deals.filter(
-          (d) => d.commercialId === c.id && d.etape === "signe"
-        );
-        const caMois = dealsCom
-          .filter((d) => new Date(d.createdAt) >= monthStart)
-          .reduce((s, d) => s + d.valeur, 0);
-        const progress = c.objectifMensuel > 0 ? caMois / c.objectifMensuel : 0;
-        const commission = state.quotes
-          .filter(
-            (q) =>
-              q.commercialId === c.id &&
-              q.signedAt &&
-              new Date(q.signedAt) >= monthStart
-          )
-          .reduce((s, q) => {
-            const t = calcDevisTotaux(q, settings, state.products);
-            return s + (q.formuleChoisie === "leasing" ? t.commissionLeasing : t.commissionAchat);
-          }, 0);
-        return { c, caMois, progress, commission };
+        const period = caCommercialPeriode(c.id, from, to, state, settings);
+        const rem = calcCommissionMensuelle(period.caTotal, settings.minimumGaranti);
+        const objectif = c.objectifMensuel || settings.objectifMensuelDefaut;
+        const progress = objectif > 0 ? period.caTotal / objectif : 0;
+        return { c, caMois: period.caTotal, progress, commission: rem.versement, nbAffaires: period.nbAffaires };
       })
       .sort((a, b) => b.caMois - a.caMois);
-  }, [state.commerciaux, state.deals, state.quotes, state.products, settings]);
+  }, [state, settings]);
 
   // Alertes
   const alertes = useMemo(() => {
@@ -369,7 +353,7 @@ export function Dashboard({ state, settings, commercialFilter, periodFilter }: D
             {ranking.length === 0 && (
               <div className="text-xs text-slate-500">Aucun commercial actif</div>
             )}
-            {ranking.map(({ c, caMois, progress, commission }, i) => (
+            {ranking.map(({ c, caMois, progress, commission, nbAffaires }, i) => (
               <div
                 key={c.id}
                 className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50"
@@ -386,9 +370,14 @@ export function Dashboard({ state, settings, commercialFilter, periodFilter }: D
                     {c.prenom} {c.nom}
                   </div>
                   <div className="text-[10px] text-slate-500 tabular-nums">
-                    {fmtEUR(caMois)} · {fmtPct(progress)}
-                    {commission > 0 && ` · +${fmtEUR(commission)}`}
+                    {fmtEUR(caMois)} · {fmtPct(progress)} · {nbAffaires} aff.
                   </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <div className="text-xs font-semibold text-emerald-600 tabular-nums">
+                    {fmtEUR(commission)}
+                  </div>
+                  <div className="text-[9px] text-slate-400">à verser</div>
                 </div>
               </div>
             ))}

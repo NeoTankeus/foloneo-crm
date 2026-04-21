@@ -212,6 +212,10 @@ export interface Settings {
   tauxMO: number;
   fraisDeplacement: number;
   objectifMensuelDefaut: number;
+  // Plan de remuneration 2026 : minimum garanti mensuel commercial terrain
+  minimumGaranti: number;
+  // Ancien systeme (legacy) conserve pour compat. La grille progressive
+  // par paliers vit dans src/lib/rem.ts (PALIERS_COMMISSION).
   commissionTaux: CommissionTaux;
   tva: number;
   societe: {

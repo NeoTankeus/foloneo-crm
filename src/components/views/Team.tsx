@@ -1,12 +1,19 @@
 import { useMemo, useState } from "react";
-import { Plus, UserCog, Target, TrendingUp, UserPlus } from "lucide-react";
+import { Plus, UserCog, Target, TrendingUp, UserPlus, Trophy, Gift, Info } from "lucide-react";
 import { Card, Badge } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/overlays";
 import { CommercialEditor } from "@/components/modals/CommercialEditor";
 import { InviteUserModal } from "@/components/modals/InviteUserModal";
 import { useAuth } from "@/hooks/useAuth";
-import { calcDevisTotaux } from "@/lib/calculations";
+import {
+  caCommercialPeriode,
+  calcCommissionMensuelle,
+  calcBonusTrimestriel,
+  monthBounds,
+  quarterBounds,
+  PALIERS_COMMISSION,
+} from "@/lib/rem";
 import { fmtEUR, fmtPct, initials, upsertById, removeById, cx } from "@/lib/helpers";
 import type { AppState, Settings, Commercial } from "@/types";
 
@@ -26,33 +33,37 @@ export function TeamView({ state, setState, settings }: Props) {
   const [inviteOpen, setInviteOpen] = useState(false);
 
   const stats = useMemo(() => {
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
+    const mois = monthBounds();
+    const trim = quarterBounds();
     return state.commerciaux.map((c) => {
-      const dealsSignes = state.deals.filter(
-        (d) => d.commercialId === c.id && d.etape === "signe"
-      );
-      const caMois = dealsSignes
-        .filter((d) => new Date(d.createdAt) >= monthStart)
-        .reduce((s, d) => s + d.valeur, 0);
-      const caTotal = dealsSignes.reduce((s, d) => s + d.valeur, 0);
-      const progress = c.objectifMensuel > 0 ? caMois / c.objectifMensuel : 0;
-      // Commissions estimees sur devis signes
-      const quotesSignes = state.quotes.filter((q) => q.commercialId === c.id);
-      const commissionMois = quotesSignes
-        .filter((q) => q.signedAt && new Date(q.signedAt) >= monthStart)
-        .reduce((s, q) => {
-          const t = calcDevisTotaux(q, settings, state.products);
-          if (q.formuleChoisie === "leasing") return s + t.commissionLeasing;
-          return s + t.commissionAchat;
-        }, 0);
-      return { c, caMois, caTotal, progress, commissionMois, dealsSignes: dealsSignes.length };
+      const mensuel = caCommercialPeriode(c.id, mois.from, mois.to, state, settings);
+      const trimestre = caCommercialPeriode(c.id, trim.from, trim.to, state, settings);
+      const rem = calcCommissionMensuelle(mensuel.caTotal, settings.minimumGaranti);
+      const bonusTrim = calcBonusTrimestriel(trimestre.nbAffaires);
+      const objectif = c.objectifMensuel || settings.objectifMensuelDefaut;
+      const progression = objectif > 0 ? mensuel.caTotal / objectif : 0;
+      return { c, mensuel, trimestre, rem, bonusTrim, objectif, progression };
     });
-  }, [state.commerciaux, state.deals, state.quotes, state.products, settings]);
+  }, [state, settings]);
 
   return (
     <div className="space-y-4">
+      {/* Bandeau explicatif plan de rem */}
+      <Card className="p-4 bg-[#F8F0DC] dark:bg-[#C9A961]/10 border-[#C9A961]/40">
+        <div className="flex items-start gap-3">
+          <Info size={16} className="text-[#8B7228] dark:text-[#C9A961] mt-0.5 flex-shrink-0" />
+          <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+            <span className="font-semibold">Plan de rémunération 2026</span> — Minimum
+            Garanti {fmtEUR(settings.minimumGaranti)} brut/mois · Objectif{" "}
+            {fmtEUR(settings.objectifMensuelDefaut)} CA HT. Grille unique achat + leasing :{" "}
+            {PALIERS_COMMISSION.filter((p) => p.taux > 0)
+              .map((p) => `${fmtPct(p.taux).replace(/\s/g, "")} au-delà de ${fmtEUR(p.min)}`)
+              .join(" · ")}
+            . CA leasing = mensualité × 48.
+          </div>
+        </div>
+      </Card>
+
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="text-xs text-slate-500">
           {state.commerciaux.length} membre{state.commerciaux.length > 1 ? "s" : ""}
@@ -79,10 +90,17 @@ export function TeamView({ state, setState, settings }: Props) {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {stats.map(({ c, caMois, progress, commissionMois, dealsSignes }) => {
-            const pct = Math.min(100, progress * 100);
+          {stats.map(({ c, mensuel, trimestre, rem, bonusTrim, objectif, progression }) => {
+            const pct = Math.min(100, progression * 100);
             const tone =
-              progress >= 1 ? "emerald" : progress >= 0.6 ? "gold" : progress >= 0.3 ? "amber" : "red";
+              progression >= 1
+                ? "emerald"
+                : progression >= 0.6
+                  ? "gold"
+                  : progression >= 0.3
+                    ? "amber"
+                    : "red";
+            const mgOuCom = rem.commissionBrute >= rem.minimumGaranti ? "commissions" : "MG";
             return (
               <Card
                 key={c.id}
@@ -107,12 +125,15 @@ export function TeamView({ state, setState, settings }: Props) {
                   {!c.actif && <Badge tone="slate">Inactif</Badge>}
                 </div>
 
+                {/* Progression objectif */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="flex items-center gap-1 text-slate-600">
-                      <Target size={12} /> Objectif mensuel
+                      <Target size={12} /> CA du mois / objectif
                     </span>
-                    <span className="font-medium tabular-nums">{fmtEUR(c.objectifMensuel)}</span>
+                    <span className="font-medium tabular-nums">
+                      {fmtEUR(mensuel.caTotal)} / {fmtEUR(objectif)}
+                    </span>
                   </div>
                   <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
                     <div
@@ -126,34 +147,68 @@ export function TeamView({ state, setState, settings }: Props) {
                       style={{ width: `${pct}%` }}
                     />
                   </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <span>
+                      {mensuel.nbAffairesAchat}A + {mensuel.nbAffairesLeasing}L ={" "}
+                      {mensuel.nbAffaires} affaire{mensuel.nbAffaires > 1 ? "s" : ""}
+                    </span>
+                    <span>{fmtPct(progression)}</span>
+                  </div>
+                </div>
+
+                {/* Bloc rémunération estimée */}
+                <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500">CA du mois</span>
-                    <span className="font-semibold tabular-nums">
-                      {fmtEUR(caMois)} · {fmtPct(progress)}
+                    <span className="text-slate-600 flex items-center gap-1">
+                      <TrendingUp size={11} /> Versement mensuel estimé
+                    </span>
+                    <span className="font-semibold tabular-nums text-emerald-600">
+                      {fmtEUR(rem.versement)}
                     </span>
                   </div>
+                  <div className="text-[10px] text-slate-500">
+                    MG {fmtEUR(rem.minimumGaranti)} · Commission brute{" "}
+                    {fmtEUR(rem.commissionBrute)} · Palier {rem.palierAtteint.label}{" "}
+                    <span className="italic">({mgOuCom} versé)</span>
+                  </div>
+
+                  {/* Breakdown paliers */}
+                  {rem.breakdown.length > 0 && (
+                    <div className="text-[10px] text-slate-400 space-y-0.5 pl-2 border-l-2 border-slate-100 dark:border-slate-800">
+                      {rem.breakdown.map((b, i) => (
+                        <div key={i} className="flex items-center justify-between">
+                          <span>{b.palier.label}</span>
+                          <span className="tabular-nums">
+                            sur {fmtEUR(b.caDansPalier)} = {fmtEUR(b.commission)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
-                  <div>
-                    <div className="text-slate-500 flex items-center gap-1">
-                      <TrendingUp size={11} /> Commission
-                    </div>
-                    <div className="font-semibold tabular-nums text-emerald-600">
-                      {fmtEUR(commissionMois)}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-slate-500">Deals signés</div>
-                    <div className="font-semibold">{dealsSignes}</div>
-                  </div>
+                {/* Bonus trimestre */}
+                <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+                  <span className="text-slate-600 flex items-center gap-1">
+                    <Trophy size={11} /> Bonus trim ({trimestre.nbAffaires} aff.)
+                  </span>
+                  <span
+                    className={cx(
+                      "font-semibold tabular-nums",
+                      bonusTrim > 0 ? "text-[#C9A961]" : "text-slate-400"
+                    )}
+                  >
+                    {bonusTrim > 0 ? `+${fmtEUR(bonusTrim)}` : "—"}
+                  </span>
                 </div>
 
-                <div className="mt-3 flex gap-1 flex-wrap text-[10px] text-slate-500">
-                  <Badge tone="slate">Achat {fmtPct(c.commissionTaux.achat)}</Badge>
-                  <Badge tone="slate">Leasing {fmtPct(c.commissionTaux.leasing)}</Badge>
-                  <Badge tone="slate">Maint {fmtPct(c.commissionTaux.maintenance)}</Badge>
-                </div>
+                {/* Détail leasing */}
+                {mensuel.caLeasing > 0 && (
+                  <div className="mt-2 text-[10px] text-slate-500 flex items-center gap-1">
+                    <Gift size={10} />
+                    Leasing mois : {fmtEUR(mensuel.caLeasing)} (×48)
+                  </div>
+                )}
               </Card>
             );
           })}
