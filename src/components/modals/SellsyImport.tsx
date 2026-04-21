@@ -81,11 +81,15 @@ function autoDetectMapping(headers: string[]): Record<string, FieldKey> {
 // Essaie de rattacher un secteur brut (libre) a un id de la liste SECTEURS.
 function matchSecteur(raw: string): Secteur | null {
   const n = normalize(raw);
+  if (!n) return null; // input vide -> pas de fallback "restauration" trompeur
   // Match direct sur l'id
   const direct = SECTEURS.find((s) => s.id === n);
   if (direct) return direct.id;
-  // Match sur le label
-  const byLabel = SECTEURS.find((s) => normalize(s.label).includes(n) || n.includes(normalize(s.label)));
+  // Match sur le label (strict : les deux non-vides pour eviter includes("") = true)
+  const byLabel = SECTEURS.find((s) => {
+    const label = normalize(s.label);
+    return label.length > 0 && (label.includes(n) || n.includes(label));
+  });
   if (byLabel) return byLabel.id;
   // Heuristiques FR
   if (/resto|restaur|bar|cafe|brasser|pizzer/.test(n)) return "restauration";
