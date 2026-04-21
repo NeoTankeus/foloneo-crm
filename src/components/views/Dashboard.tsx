@@ -23,6 +23,7 @@ import { Stat } from "@/components/ui/overlays";
 import { ETAPES } from "@/lib/constants";
 import { calcCommissionMensuelle, caCommercialPeriode, monthBounds } from "@/lib/rem";
 import { fmtEUR, fmtPct, daysAgo, daysUntil, initials } from "@/lib/helpers";
+import { useAuth } from "@/hooks/useAuth";
 import { VarMap3D } from "./VarMap3D";
 import type { AppState, Settings } from "@/types";
 
@@ -34,6 +35,11 @@ interface DashboardProps {
 }
 
 export function Dashboard({ state, settings, commercialFilter, periodFilter }: DashboardProps) {
+  // Les dirigeants ne veulent pas voir l'objectif de signature sur leur tableau
+  // de bord (demande explicite Stephane). On masque l'etiquette, la courbe
+  // pointillee et le pourcentage de progression dans le classement.
+  const { currentCommercial } = useAuth();
+  const hideObjectives = currentCommercial?.role === "dirigeant";
   // Periode de filtre
   const periodStart = useMemo(() => {
     const now = new Date();
@@ -257,7 +263,9 @@ export function Dashboard({ state, settings, commercialFilter, periodFilter }: D
         <Card className="p-4 lg:col-span-2">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-sm">Évolution du CA · 6 derniers mois</h2>
-            <Badge tone="gold">Objectif mensuel : {fmtEUR(chartData[0]?.objectif ?? 0)}</Badge>
+            {!hideObjectives && (
+              <Badge tone="gold">Objectif mensuel : {fmtEUR(chartData[0]?.objectif ?? 0)}</Badge>
+            )}
           </div>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
@@ -291,14 +299,16 @@ export function Dashboard({ state, settings, commercialFilter, periodFilter }: D
                   fill="url(#gGold)"
                   name="CA signé"
                 />
-                <Area
-                  type="monotone"
-                  dataKey="objectif"
-                  stroke="#0B1E3F"
-                  strokeDasharray="4 3"
-                  fillOpacity={0}
-                  name="Objectif"
-                />
+                {!hideObjectives && (
+                  <Area
+                    type="monotone"
+                    dataKey="objectif"
+                    stroke="#0B1E3F"
+                    strokeDasharray="4 3"
+                    fillOpacity={0}
+                    name="Objectif"
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -371,7 +381,10 @@ export function Dashboard({ state, settings, commercialFilter, periodFilter }: D
                     {c.prenom} {c.nom}
                   </div>
                   <div className="text-[10px] text-slate-500 tabular-nums">
-                    {fmtEUR(caMois)} · {fmtPct(progress)} · {nbAffaires} aff.
+                    {fmtEUR(caMois)}
+                    {!hideObjectives && <> · {fmtPct(progress)}</>}
+                    {" · "}
+                    {nbAffaires} aff.
                   </div>
                 </div>
                 <div className="text-right flex-shrink-0">

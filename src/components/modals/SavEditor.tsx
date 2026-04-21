@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Save, Trash2, AlertTriangle } from "lucide-react";
+import { Save, Trash2, AlertTriangle, UserPlus, Link as LinkIcon } from "lucide-react";
 import { Modal } from "@/components/ui/overlays";
 import { Input, Select, Textarea } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
-import { uid } from "@/lib/helpers";
+import { cx, uid } from "@/lib/helpers";
 import { useDemoData } from "@/lib/supabase";
 import * as db from "@/lib/db";
 import type { SavTicket, Account } from "@/types";
@@ -17,51 +17,88 @@ interface Props {
   onDeleted?: (id: string) => void;
 }
 
-const EMPTY: Omit<SavTicket, "id" | "createdAt"> = {
+type FormState = Omit<SavTicket, "id" | "createdAt">;
+
+const EMPTY: FormState = {
   numero: undefined,
-  accountId: "",
+  accountId: undefined,
+  clientNom: "",
+  clientTelephone: "",
+  clientEmail: "",
   objet: "",
   description: "",
   status: "ouvert",
   priorite: "normale",
 };
 
+// Mode du ticket : rattache a un compte existant, ou client ad-hoc (saisie libre).
+type ClientMode = "account" | "adhoc";
+
 export function SavEditor({ open, ticket, accounts, onClose, onSaved, onDeleted }: Props) {
-  const [form, setForm] = useState<Omit<SavTicket, "id" | "createdAt">>(EMPTY);
+  const [form, setForm] = useState<FormState>(EMPTY);
+  const [mode, setMode] = useState<ClientMode>("adhoc");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (ticket) {
       const { id: _id, createdAt: _createdAt, ...rest } = ticket;
-      setForm(rest);
+      setForm({
+        ...EMPTY,
+        ...rest,
+      });
+      // Detection du mode : si accountId -> compte, sinon ad-hoc
+      setMode(ticket.accountId ? "account" : "adhoc");
     } else {
-      setForm({ ...EMPTY, accountId: accounts[0]?.id ?? "" });
+      // Par defaut : ad-hoc (reponds au besoin "sans client enregistré")
+      setForm({ ...EMPTY });
+      setMode("adhoc");
     }
     setError(null);
-  }, [ticket, open, accounts]);
+  }, [ticket, open]);
 
-  function patch<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
+  function patch<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm((s) => ({ ...s, [k]: v }));
   }
+
+  // Validation coherente avec la contrainte DB (account OR client_nom)
+  const canSave = (() => {
+    if (!form.objet.trim()) return false;
+    if (mode === "account") return !!form.accountId;
+    return !!(form.clientNom ?? "").trim();
+  })();
 
   async function save() {
     setSaving(true);
     setError(null);
     try {
+      // Selon le mode, on transmet l'un OU l'autre (pas les deux)
+      const payload: FormState =
+        mode === "account"
+          ? {
+              ...form,
+              clientNom: undefined,
+              clientTelephone: undefined,
+              clientEmail: undefined,
+            }
+          : {
+              ...form,
+              accountId: undefined,
+            };
+
       let saved: SavTicket;
       if (ticket) {
         const patchWithResolved =
-          form.status === "resolu" && !ticket.resolvedAt
-            ? { ...form, resolvedAt: new Date().toISOString() }
-            : form;
+          payload.status === "resolu" && !ticket.resolvedAt
+            ? { ...payload, resolvedAt: new Date().toISOString() }
+            : payload;
         saved = useDemoData
           ? { ...ticket, ...patchWithResolved }
           : await db.updateSav(ticket.id, patchWithResolved);
       } else {
         saved = useDemoData
-          ? { ...form, id: uid("sav"), createdAt: new Date().toISOString() }
-          : await db.createSav(form);
+          ? { ...payload, id: uid("sav"), createdAt: new Date().toISOString() }
+          : await db.createSav(payload);
       }
       onSaved(saved);
       onClose();
@@ -108,7 +145,7 @@ export function SavEditor({ open, ticket, accounts, onClose, onSaved, onDeleted 
             variant="primary"
             icon={Save}
             onClick={save}
-            disabled={saving || !form.accountId || !form.objet}
+            disabled={saving || !canSave}
           >
             {saving ? "Enregistrement…" : "Enregistrer"}
           </Button>
@@ -116,19 +153,89 @@ export function SavEditor({ open, ticket, accounts, onClose, onSaved, onDeleted 
       }
     >
       <div className="space-y-3">
-        <Select
-          label="Compte"
-          required
-          value={form.accountId}
-          onChange={(e) => patch("accountId", e.target.value)}
-        >
-          <option value="">— Sélectionner —</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.raisonSociale}
-            </option>
-          ))}
-        </Select>
+        {/* Toggle mode : client libre vs compte existant */}
+        <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+          <button
+            type="button"
+            onClick={() => setMode("adhoc")}
+            className={cx(
+              "flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-semibold transition-colors",
+              mode === "adhoc"
+                ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm"
+                : "text-slate-500"
+            )}
+          >
+            <UserPlus size={14} />
+            Client libre
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("account")}
+            disabled={accounts.length === 0}
+            className={cx(
+              "flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
+              mode === "account"
+                ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm"
+                : "text-slate-500"
+            )}
+            title={
+              accounts.length === 0
+                ? "Aucun compte existant — ajoute un client d'abord"
+                : undefined
+            }
+          >
+            <LinkIcon size={14} />
+            Compte existant
+          </button>
+        </div>
+
+        {/* Zone client selon le mode */}
+        {mode === "account" ? (
+          <Select
+            label="Compte rattaché"
+            required
+            value={form.accountId ?? ""}
+            onChange={(e) => patch("accountId", e.target.value || undefined)}
+          >
+            <option value="">— Sélectionner —</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.raisonSociale}
+              </option>
+            ))}
+          </Select>
+        ) : (
+          <div className="space-y-3 p-3 rounded-lg border border-dashed border-slate-300 dark:border-slate-700">
+            <div className="text-[11px] text-slate-500">
+              Saisis directement les coordonnées du client. Tu pourras le rattacher à un compte enregistré plus tard.
+            </div>
+            <Input
+              label="Nom / raison sociale"
+              required
+              value={form.clientNom ?? ""}
+              onChange={(e) => patch("clientNom", e.target.value)}
+              placeholder="Ex : M. Dupont, Boulangerie Martin…"
+              autoFocus
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="Téléphone"
+                type="tel"
+                value={form.clientTelephone ?? ""}
+                onChange={(e) => patch("clientTelephone", e.target.value)}
+                placeholder="06 00 00 00 00"
+              />
+              <Input
+                label="Email"
+                type="email"
+                value={form.clientEmail ?? ""}
+                onChange={(e) => patch("clientEmail", e.target.value)}
+                placeholder="client@exemple.fr"
+              />
+            </div>
+          </div>
+        )}
+
         <Input
           label="Objet"
           required

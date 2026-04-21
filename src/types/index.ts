@@ -177,7 +177,12 @@ export interface CalendarEvent {
 export interface SavTicket {
   id: string;
   numero?: string;
-  accountId: string;
+  // Soit un compte rattache, soit un client ad-hoc (nom requis).
+  // La contrainte CHECK en DB garantit qu'on a l'un ou l'autre.
+  accountId?: string;
+  clientNom?: string;
+  clientTelephone?: string;
+  clientEmail?: string;
   objet: string;
   description: string;
   status: SavStatus;

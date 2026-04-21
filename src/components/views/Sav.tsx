@@ -55,8 +55,18 @@ export function SavView({ state, setState, settings }: Props) {
     return state.sav.filter((t) => {
       if (status !== "all" && t.status !== status) return false;
       if (q) {
-        const acc = state.accounts.find((a) => a.id === t.accountId);
-        const hay = `${t.objet} ${t.description} ${acc?.raisonSociale ?? ""}`.toLowerCase();
+        const acc = t.accountId ? state.accounts.find((a) => a.id === t.accountId) : null;
+        // Recherche aussi sur le client ad-hoc (clientNom/clientTelephone/clientEmail)
+        const hay = [
+          t.objet,
+          t.description,
+          acc?.raisonSociale ?? "",
+          t.clientNom ?? "",
+          t.clientTelephone ?? "",
+          t.clientEmail ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -111,7 +121,6 @@ export function SavView({ state, setState, settings }: Props) {
           variant="gold"
           icon={Plus}
           onClick={() => setEditor({ open: true, ticket: null })}
-          disabled={state.accounts.length === 0}
         >
           Nouveau ticket
         </Button>
@@ -124,7 +133,10 @@ export function SavView({ state, setState, settings }: Props) {
       ) : (
         <div className="space-y-2">
           {filtered.map((t) => {
-            const acc = state.accounts.find((a) => a.id === t.accountId);
+            const acc = t.accountId ? state.accounts.find((a) => a.id === t.accountId) : null;
+            // Libelle client : soit la raison sociale rattachee, soit le nom ad-hoc
+            const clientLabel = acc?.raisonSociale ?? t.clientNom ?? "—";
+            const clientContact = [t.clientTelephone, t.clientEmail].filter(Boolean).join(" · ");
             return (
               <Card
                 key={t.id}
@@ -145,9 +157,15 @@ export function SavView({ state, setState, settings }: Props) {
                       {t.priorite && t.priorite !== "normale" && (
                         <Badge tone={PRIO_TONES[t.priorite]}>{t.priorite}</Badge>
                       )}
+                      {!acc && t.clientNom && (
+                        <Badge tone="slate">client libre</Badge>
+                      )}
                     </div>
                     <div className="text-xs text-slate-500 truncate mt-0.5">
-                      {acc?.raisonSociale ?? "—"}
+                      {clientLabel}
+                      {!acc && clientContact && (
+                        <span className="text-slate-400"> · {clientContact}</span>
+                      )}
                     </div>
                     <div className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2 mt-1">
                       {t.description}

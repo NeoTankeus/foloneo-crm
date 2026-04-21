@@ -6,7 +6,10 @@ import type { SavTicket } from "@/types";
 const fromRow = (r: any): SavTicket => ({
   id: r.id,
   numero: r.numero ?? undefined,
-  accountId: r.account_id,
+  accountId: r.account_id ?? undefined,
+  clientNom: r.client_nom ?? undefined,
+  clientTelephone: r.client_telephone ?? undefined,
+  clientEmail: r.client_email ?? undefined,
   objet: r.objet,
   description: r.description ?? "",
   status: r.status,
@@ -15,15 +18,27 @@ const fromRow = (r: any): SavTicket => ({
   resolvedAt: r.resolved_at ?? undefined,
 });
 
-const toRow = (t: Partial<SavTicket>): Record<string, unknown> => ({
-  numero: t.numero ?? null,
-  account_id: t.accountId,
-  objet: t.objet,
-  description: t.description ?? null,
-  status: t.status,
-  priorite: t.priorite ?? "normale",
-  resolved_at: t.resolvedAt ?? null,
-});
+const toRow = (t: Partial<SavTicket>): Record<string, unknown> => {
+  // Chaine vide ou undefined -> null en DB. Si un compte est rattache, les
+  // champs ad-hoc sont vides : on ne veut pas de doublon d'info.
+  const norm = (v: string | undefined) => {
+    const s = (v ?? "").trim();
+    return s.length > 0 ? s : null;
+  };
+  const accountId = norm(t.accountId);
+  return {
+    numero: t.numero ?? null,
+    account_id: accountId,
+    client_nom: accountId ? null : norm(t.clientNom),
+    client_telephone: accountId ? null : norm(t.clientTelephone),
+    client_email: accountId ? null : norm(t.clientEmail),
+    objet: t.objet,
+    description: norm(t.description),
+    status: t.status,
+    priorite: t.priorite ?? "normale",
+    resolved_at: t.resolvedAt ?? null,
+  };
+};
 
 export async function listSav(): Promise<SavTicket[]> {
   if (useDemoData || !supabase) return DEMO_STATE.sav;
