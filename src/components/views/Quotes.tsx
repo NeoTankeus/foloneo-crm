@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, FileText, Copy, Eye, Send, CheckCircle2 } from "lucide-react";
+import { Plus, Search, FileText, Copy, Eye, Send, CheckCircle2, FileSpreadsheet } from "lucide-react";
 import { Card, Input, Select, Badge } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/overlays";
 import { QuoteWizard } from "@/components/wizard/QuoteWizard";
+import { SellsyQuoteImport } from "@/components/modals/SellsyQuoteImport";
 import { PrintView } from "@/components/PrintView";
 import { calcDevisTotaux } from "@/lib/calculations";
 import { fmtEUR, fmtDate, upsertById, uid } from "@/lib/helpers";
@@ -37,6 +38,7 @@ export function QuotesView({ state, setState, settings, openWizardSignal }: Prop
     }
   }, [openWizardSignal]);
   const [preview, setPreview] = useState<{ quote: Quote; mode: "achat" | "leasing" } | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState<string>("");
   const [status, setStatus] = useState<QuoteStatus | "all">("all");
 
@@ -102,6 +104,14 @@ export function QuotesView({ state, setState, settings, openWizardSignal }: Prop
           <option value="signe_leasing">Signés Leasing</option>
           <option value="perdu">Perdus</option>
         </Select>
+        <Button
+          variant="outline"
+          icon={FileSpreadsheet}
+          onClick={() => setImportOpen(true)}
+        >
+          <span className="hidden sm:inline">Importer Sellsy</span>
+          <span className="sm:hidden">Import</span>
+        </Button>
         <Button
           variant="gold"
           icon={Plus}
@@ -228,6 +238,19 @@ export function QuotesView({ state, setState, settings, openWizardSignal }: Prop
         settings={settings}
         onClose={() => setWizard({ open: false, quote: null })}
         onSaved={(q) => setState((s) => ({ ...s, quotes: upsertById(s.quotes, q) }))}
+      />
+
+      <SellsyQuoteImport
+        open={importOpen}
+        accounts={state.accounts}
+        onClose={() => setImportOpen(false)}
+        onImported={({ quotes, newAccounts }) =>
+          setState((s) => ({
+            ...s,
+            quotes: [...quotes, ...s.quotes],
+            accounts: [...newAccounts, ...s.accounts],
+          }))
+        }
       />
 
       {preview && (

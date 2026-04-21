@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { Plus, Search, Receipt, Download, FileText, CheckCircle2 } from "lucide-react";
+import { Plus, Search, Receipt, Download, FileText, CheckCircle2, FileSpreadsheet } from "lucide-react";
 import { Card, Input, Select, Badge } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { Stat, EmptyState } from "@/components/ui/overlays";
 import { InvoiceEditor } from "@/components/modals/InvoiceEditor";
+import { SellsyInvoiceImport } from "@/components/modals/SellsyInvoiceImport";
 import { calcDevisTotaux } from "@/lib/calculations";
 import {
   fmtEUR,
@@ -45,6 +46,7 @@ export function InvoicesView({ state, setState, settings }: Props) {
     open: false,
     invoice: null,
   });
+  const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState<string>("");
   const [status, setStatus] = useState<InvoiceStatus | "all">("all");
 
@@ -226,6 +228,14 @@ export function InvoicesView({ state, setState, settings }: Props) {
           Export CSV
         </Button>
         <Button
+          variant="outline"
+          icon={FileSpreadsheet}
+          onClick={() => setImportOpen(true)}
+        >
+          <span className="hidden sm:inline">Importer Sellsy</span>
+          <span className="sm:hidden">Import</span>
+        </Button>
+        <Button
           variant="gold"
           icon={Plus}
           onClick={() => setEditor({ open: true, invoice: null })}
@@ -292,6 +302,19 @@ export function InvoicesView({ state, setState, settings }: Props) {
         onSaved={(f) => setState((s) => ({ ...s, invoices: upsertById(s.invoices, f) }))}
         onDeleted={(id) =>
           setState((s) => ({ ...s, invoices: removeById(s.invoices, id) }))
+        }
+      />
+
+      <SellsyInvoiceImport
+        open={importOpen}
+        accounts={state.accounts}
+        onClose={() => setImportOpen(false)}
+        onImported={({ invoices, newAccounts }) =>
+          setState((s) => ({
+            ...s,
+            invoices: [...invoices, ...s.invoices],
+            accounts: [...newAccounts, ...s.accounts],
+          }))
         }
       />
     </div>
