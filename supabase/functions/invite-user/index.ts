@@ -110,24 +110,27 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 3) Envoyer le mail d'invitation (magic link premiere connexion)
+    // 3) Creer le user (pas d'email automatique, evite le rate-limit SMTP Supabase)
     // @ts-expect-error Deno global
     const APP_URL = Deno.env.get("APP_URL") ?? req.headers.get("origin") ?? "";
-    const { data: inviteData, error: inviteErr } =
-      await admin.auth.admin.inviteUserByEmail(email, {
-        redirectTo: APP_URL || undefined,
-      });
+    const { data: userData, error: createErr } = await admin.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      user_metadata: { prenom, nom },
+    });
 
-    if (inviteErr) {
+    if (createErr || !userData?.user) {
       return new Response(
-        JSON.stringify({ error: `Invitation: ${inviteErr.message}` }),
+        JSON.stringify({
+          error: `Creation user: ${createErr?.message ?? "user non cree"}`,
+        }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // 3b) Genere aussi un lien "recovery" manuel comme filet de secours
-    // si le SMTP Supabase ne livre pas le mail (spam, OVH filters, rate-limit).
-    // On peut copier-coller ce lien et le transmettre par un autre canal.
+    // 3b) Genere un lien de premiere connexion (type recovery = "definir mon mot de passe")
+    // Ce lien ne declenche pas d'envoi SMTP, on le retourne au client pour qu'il
+    // soit transmis par le canal de son choix (SMS, WhatsApp, mail perso).
     let manualLink: string | null = null;
     try {
       const { data: linkData } = await admin.auth.admin.generateLink({
@@ -137,14 +140,14 @@ Deno.serve(async (req: Request) => {
       });
       manualLink = linkData?.properties?.action_link ?? null;
     } catch (_e) {
-      /* on ignore, c'est juste un bonus */
+      /* pas de lien mais le user est cree, ce n'est pas bloquant */
     }
 
     // 4) Creer la fiche commercial liee
     const { data: commercial, error: cErr } = await admin
       .from("commerciaux")
       .insert({
-        user_id: inviteData.user.id,
+        user_id: userData.user.id,
         email,
         prenom,
         nom,
@@ -162,7 +165,7 @@ Deno.serve(async (req: Request) => {
 
     if (cErr) {
       // Rollback best-effort : supprimer le auth user si la creation du commercial echoue
-      await admin.auth.admin.deleteUser(inviteData.user.id);
+      await admin.auth.admin.deleteUser(userData.user.id);
       return new Response(
         JSON.stringify({ error: `Creation commercial: ${cErr.message}` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
