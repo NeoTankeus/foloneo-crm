@@ -55,8 +55,81 @@ export type ParsedFile = {
   rows: Record<string, unknown>[];
 };
 
+// Heuristiques : quel separateur domine sur la 1e ligne ?
+function sniffCsvDelimiter(firstLine: string): string {
+  const counts = {
+    ";": (firstLine.match(/;/g) ?? []).length,
+    "\t": (firstLine.match(/\t/g) ?? []).length,
+    "|": (firstLine.match(/\|/g) ?? []).length,
+    ",": (firstLine.match(/,/g) ?? []).length,
+  };
+  // Ordre de preference si ex-aequo : ; (FR), tab, |, ,
+  const order: (keyof typeof counts)[] = [";", "\t", "|", ","];
+  let best: keyof typeof counts = ",";
+  let bestCount = 0;
+  for (const d of order) {
+    if (counts[d] > bestCount) {
+      best = d;
+      bestCount = counts[d];
+    }
+  }
+  return best;
+}
+
+// Decode un buffer binaire en essayant UTF-8 strict d'abord, puis fallback
+// Windows-1252 (Latin-1) qui couvre les exports Excel FR classiques.
+// Trois signaux nous font basculer sur 1252 :
+//  1. UTF-8 BOM absent ET sequences d'octets invalides en UTF-8 (ex: 0xE9 isole)
+//  2. Presence de caracteres U+FFFD (remplacement) apres decode UTF-8 fatal=false
+//  3. Sequences "Ã." typiques de Latin-1-lu-en-UTF-8 (moins frequent)
+function smartDecode(buffer: ArrayBuffer): string {
+  const view = new Uint8Array(buffer);
+
+  // UTF-8 BOM explicite -> UTF-8 sans question
+  if (view.length >= 3 && view[0] === 0xef && view[1] === 0xbb && view[2] === 0xbf) {
+    return new TextDecoder("utf-8").decode(view.subarray(3));
+  }
+
+  // Essai UTF-8 strict : si le buffer n'est pas valide UTF-8, on tombe direct en 1252
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
+    try {
+      return new TextDecoder("windows-1252").decode(buffer);
+    } catch {
+      // En dernier recours, UTF-8 tolerant (avec remplacements)
+      return new TextDecoder("utf-8", { fatal: false }).decode(buffer);
+    }
+  }
+}
+
 export async function parseSpreadsheet(f: File): Promise<ParsedFile> {
+  const isCSV =
+    /\.csv$/i.test(f.name) ||
+    f.type === "text/csv" ||
+    f.type === "application/csv" ||
+    f.type === "application/vnd.ms-excel" && /\.csv$/i.test(f.name);
+
   const buffer = await f.arrayBuffer();
+
+  if (isCSV) {
+    // CSV : on gere separateur + encodage nous-memes pour resilience aux exports FR
+    const text = smartDecode(buffer);
+    const firstLine = text.split(/\r?\n/).find((l) => l.trim().length > 0) ?? "";
+    const delim = sniffCsvDelimiter(firstLine);
+    const wb = XLSX.read(text, { type: "string", FS: delim });
+    const firstSheet = wb.SheetNames[0];
+    if (!firstSheet) throw new Error("Aucune feuille trouvée.");
+    const ws = wb.Sheets[firstSheet];
+    const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(ws, {
+      defval: "",
+      raw: false,
+    });
+    const headers = rows[0] ? Object.keys(rows[0]) : [];
+    return { filename: f.name, headers, rows };
+  }
+
+  // xlsx / xls : lecture binaire, SheetJS s'occupe du reste
   const wb = XLSX.read(buffer, { type: "array" });
   const firstSheet = wb.SheetNames[0];
   if (!firstSheet) throw new Error("Aucune feuille trouvée.");
