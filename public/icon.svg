@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- App icon carre 512x512 — navy background + FOLONEO gold monogram.
+     Utilise pour favicon, apple-touch-icon (iOS home screen), PWA manifest. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Foloneo">
+  <!-- Background navy avec radius iOS-style -->
+  <rect width="512" height="512" rx="112" fill="#0B1E3F"/>
+  <!-- Accent dore en bandeau -->
+  <rect x="64" y="356" width="384" height="6" rx="3" fill="#C9A961"/>
+  <!-- Monogramme F stylise -->
+  <g fill="#C9A961">
+    <!-- Barre verticale -->
+    <rect x="160" y="128" width="48" height="256" rx="6"/>
+    <!-- Barre horizontale haute -->
+    <rect x="160" y="128" width="192" height="48" rx="6"/>
+    <!-- Barre horizontale milieu -->
+    <rect x="160" y="230" width="144" height="44" rx="6"/>
+  </g>
+  <!-- Texte FOLONEO (petit, sous le monogramme) -->
+  <text x="256" y="442" text-anchor="middle"
+        font-family="Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif"
+        font-size="40" font-weight="900" fill="#ffffff" letter-spacing="2">FOLONEO</text>
+</svg>

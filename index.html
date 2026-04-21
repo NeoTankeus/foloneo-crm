@@ -2,17 +2,50 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- Identite / SEO -->
+    <title>Foloneo CRM — Votre partenaire sécurité</title>
+    <meta name="description" content="CRM Foloneo : devis, pipeline, clients, maintenance et SAV pour la sécurité électronique." />
+    <meta name="application-name" content="Foloneo CRM" />
     <meta name="theme-color" content="#0B1E3F" />
-    <meta name="description" content="FOLONEO CRM - Sécurité électronique Toulon" />
-    <title>FOLONEO CRM</title>
+    <meta name="color-scheme" content="light dark" />
+
+    <!-- Icons -->
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="mask-icon" href="/icon.svg" color="#0B1E3F" />
+
+    <!-- PWA / iOS "Add to Home Screen" = installation type logiciel pro -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Foloneo" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- Open Graph (partage sur Slack / Messenger / LinkedIn...) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Foloneo CRM" />
+    <meta property="og:title" content="Foloneo CRM" />
+    <meta property="og:description" content="CRM Foloneo — Votre partenaire sécurité." />
+    <meta property="og:image" content="/icon.svg" />
+    <meta property="og:locale" content="fr_FR" />
+    <meta name="twitter:card" content="summary" />
+
+    <!-- Perf : preconnect vers les services critiques pour masquer la latence DNS/TLS -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="preconnect" href="https://wjsxfhsishffpmtybbrq.supabase.co" crossorigin />
+    <link rel="dns-prefetch" href="https://wjsxfhsishffpmtybbrq.supabase.co" />
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <noscript>
+      Foloneo CRM nécessite JavaScript activé pour fonctionner.
+    </noscript>
   </body>
 </html>

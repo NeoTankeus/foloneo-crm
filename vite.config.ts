@@ -13,4 +13,23 @@ export default defineConfig({
     port: 5173,
     open: true,
   },
+  build: {
+    // Code-splitting : vendor chunks pour reduire le bundle initial.
+    // React reste chemin critique ; recharts / supabase / icons sortent en chunks
+    // separes, caches longtemps, ne se re-telechargent qu'en cas d'update.
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes("node_modules")) {
+            if (id.includes("react-dom") || id.includes("react/") || id.includes("scheduler")) return "vendor-react";
+            if (id.includes("@supabase")) return "vendor-supabase";
+            if (id.includes("recharts") || id.includes("d3-")) return "vendor-charts";
+            if (id.includes("lucide-react")) return "vendor-icons";
+          }
+        },
+      },
+    },
+    chunkSizeWarningLimit: 600,
+    sourcemap: false,
+  },
 });
