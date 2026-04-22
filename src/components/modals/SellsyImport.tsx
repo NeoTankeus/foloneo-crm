@@ -1,97 +1,271 @@
 import { useMemo, useState } from "react";
 import { Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, ArrowRight } from "lucide-react";
-import * as XLSX from "xlsx";
 import { Modal } from "@/components/ui/overlays";
 import { Button } from "@/components/ui/Button";
 import { Badge, Select } from "@/components/ui/primitives";
 import * as db from "@/lib/db";
 import { SECTEURS, SOURCES } from "@/lib/constants";
 import { useDemoData } from "@/lib/supabase";
-import type { Account, Secteur, Source } from "@/types";
+import { parseSpreadsheet, normalize, matchAccountByName } from "@/lib/sellsy-import-utils";
+import type { Account, Contact, Secteur, Source } from "@/types";
 
-// -----------------------------------------------------------------------------
-// Mapping auto-detect : on cherche des mots-cles dans l'entete de chaque
-// colonne (insensible a la casse/accents) pour proposer un mapping. L'utilisateur
-// peut corriger avant import.
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Mapping fields — aligne sur l'export Sellsy "clients complet"
+// =============================================================================
+//
+// L'utilisateur peut mapper chaque colonne de son CSV vers un des champs
+// ci-dessous. Les libelles sont calques sur ceux qu'emploie Sellsy pour
+// faciliter la reconnaissance visuelle.
+//
+// Plusieurs niveaux :
+//   - Société : ce qui va sur l'Account
+//   - Adresse : champs postaux, concatenes si plusieurs parties
+//   - Contact : si un nom/prenom est mappe -> creation d'un Contact lie
+//   - Flags : contact principal / facturation / relance -> role
+//   - Extras : stockes dans account.notes (readonly, lecture libre)
+
 type FieldKey =
+  // --- Société / Account ---
+  | "sellsyIdSociete"
+  | "typeSociete"
   | "raisonSociale"
   | "siret"
-  | "adresse"
+  | "secteur"
+  | "emailSociete"
+  | "telephoneSociete"
+  // --- Adresse ---
+  | "nomAdresse"
+  | "adressePartie1"
+  | "adressePartie2"
+  | "adressePartie3"
+  | "adressePartie4"
   | "codePostal"
   | "ville"
-  | "telephone"
-  | "email"
-  | "secteur"
-  | "notes"
+  | "etat"
+  | "codePays"
+  | "sellsyIdAdresse"
+  // --- Contact ---
+  | "sellsyIdContact"
+  | "civiliteContact"
+  | "prenomContact"
+  | "nomContact"
+  | "fonctionContact"
+  | "emailContact"
+  | "telephoneContact"
+  | "mobileContact"
+  | "faxContact"
+  | "webContact"
+  | "anniversaireContact"
+  | "noteContact"
+  // --- Réseaux ---
+  | "twitterContact"
+  | "linkedinContact"
+  | "facebookContact"
+  | "viadeoContact"
+  // --- Marketing ---
+  | "smartTags"
+  | "inscritEmail"
+  | "inscritSms"
+  // --- Rôles contact ---
+  | "contactPrincipal"
+  | "contactFacturation"
+  | "contactRelance"
+  // --- Dates Sellsy (info seulement) ---
+  | "dateCreation"
+  | "dateModification"
   | "__ignore__";
 
+// Libelles affiches dans le dropdown. L'asterisque * = requis (raison sociale).
 const FIELD_LABELS: Record<Exclude<FieldKey, "__ignore__">, string> = {
-  raisonSociale: "Raison sociale *",
+  // Société
+  sellsyIdSociete: "ID société Sellsy",
+  typeSociete: "Type société (juridique)",
+  raisonSociale: "Nom société / Raison sociale *",
   siret: "SIRET",
-  adresse: "Adresse",
+  secteur: "Secteur d'activité",
+  emailSociete: "Email société",
+  telephoneSociete: "Téléphone société",
+  // Adresse
+  nomAdresse: "Nom adresse",
+  adressePartie1: "Adresse partie 1",
+  adressePartie2: "Adresse partie 2",
+  adressePartie3: "Adresse partie 3",
+  adressePartie4: "Adresse partie 4",
   codePostal: "Code postal",
   ville: "Ville",
-  telephone: "Téléphone",
-  email: "Email",
-  secteur: "Secteur",
-  notes: "Notes",
+  etat: "État / Région",
+  codePays: "Code pays",
+  sellsyIdAdresse: "ID adresse Sellsy",
+  // Contact
+  sellsyIdContact: "ID contact Sellsy",
+  civiliteContact: "Civilité contact",
+  prenomContact: "Prénom contact",
+  nomContact: "Nom contact",
+  fonctionContact: "Fonction contact",
+  emailContact: "Email contact",
+  telephoneContact: "Téléphone contact",
+  mobileContact: "Mobile contact",
+  faxContact: "Fax contact",
+  webContact: "Web contact",
+  anniversaireContact: "Anniversaire contact",
+  noteContact: "Note contact",
+  // Réseaux
+  twitterContact: "Twitter contact",
+  linkedinContact: "LinkedIn contact",
+  facebookContact: "Facebook contact",
+  viadeoContact: "Viadeo contact",
+  // Marketing
+  smartTags: "Smart Tags",
+  inscritEmail: "Inscrit campagnes email",
+  inscritSms: "Inscrit campagnes SMS",
+  // Flags roles
+  contactPrincipal: "Contact principal (oui/non)",
+  contactFacturation: "Contact de facturation (oui/non)",
+  contactRelance: "Contact de relance (oui/non)",
+  // Dates
+  dateCreation: "Date de création",
+  dateModification: "Date de dernière modification",
 };
 
-// Synonymes Sellsy-like (FR + EN). L'ordre est important : le plus specifique d'abord.
+// Groupes (optgroup) pour presenter le dropdown proprement
+const FIELD_GROUPS: { label: string; fields: Exclude<FieldKey, "__ignore__">[] }[] = [
+  {
+    label: "Société",
+    fields: ["raisonSociale", "sellsyIdSociete", "typeSociete", "siret", "secteur", "emailSociete", "telephoneSociete"],
+  },
+  {
+    label: "Adresse",
+    fields: ["nomAdresse", "adressePartie1", "adressePartie2", "adressePartie3", "adressePartie4", "codePostal", "ville", "etat", "codePays", "sellsyIdAdresse"],
+  },
+  {
+    label: "Contact",
+    fields: ["sellsyIdContact", "civiliteContact", "prenomContact", "nomContact", "fonctionContact", "emailContact", "telephoneContact", "mobileContact", "faxContact", "webContact", "anniversaireContact", "noteContact"],
+  },
+  {
+    label: "Réseaux sociaux",
+    fields: ["twitterContact", "linkedinContact", "facebookContact", "viadeoContact"],
+  },
+  {
+    label: "Marketing",
+    fields: ["smartTags", "inscritEmail", "inscritSms"],
+  },
+  {
+    label: "Rôle du contact",
+    fields: ["contactPrincipal", "contactFacturation", "contactRelance"],
+  },
+  {
+    label: "Dates Sellsy",
+    fields: ["dateCreation", "dateModification"],
+  },
+];
+
+// Synonymes pour auto-detection. L'exact match Sellsy est prioritaire.
+// Note : toutes ces chaines sont normalisees (minuscules, sans accents) avant comparaison.
 const HEADER_HINTS: Record<Exclude<FieldKey, "__ignore__">, string[]> = {
-  raisonSociale: ["raison sociale", "raison_sociale", "nom client", "nom commercial", "company", "nom de l'entreprise", "nom entreprise", "societe", "client", "nom"],
+  // Société
+  sellsyIdSociete: ["id societe sellsy", "id sellsy societe", "sellsy id societe", "sellsy client id"],
+  typeSociete: ["type societe", "type de societe", "forme juridique"],
+  raisonSociale: [
+    "nom societe", "raison sociale", "raison_sociale", "nom client",
+    "nom commercial", "company", "nom de l'entreprise", "nom entreprise",
+    "societe", "client", "denomination",
+  ],
   siret: ["siret", "siren"],
-  adresse: ["adresse 1", "adresse", "address", "rue", "street"],
+  secteur: ["secteur d'activite", "secteur", "activite", "industry", "sector"],
+  emailSociete: ["email societe", "mail societe", "e-mail societe", "courriel societe"],
+  telephoneSociete: ["telephone societe", "tel societe", "phone company"],
+  // Adresse
+  nomAdresse: ["nom adresse", "libelle adresse", "adresse nom"],
+  adressePartie1: ["adresse partie 1", "adresse 1", "adresse ligne 1", "adresse principale", "rue", "street", "address line 1"],
+  adressePartie2: ["adresse partie 2", "adresse 2", "adresse ligne 2", "complement adresse", "address line 2"],
+  adressePartie3: ["adresse partie 3", "adresse 3", "adresse ligne 3"],
+  adressePartie4: ["adresse partie 4", "adresse 4", "adresse ligne 4"],
   codePostal: ["code postal", "code_postal", "cp", "zip", "postal code", "postcode"],
   ville: ["ville", "city", "localite", "commune"],
-  telephone: ["telephone", "téléphone", "tel", "tél.", "phone", "tel.", "mobile", "portable"],
-  email: ["e-mail", "email", "courriel", "mail"],
-  secteur: ["secteur", "activite", "activité", "industry", "sector"],
-  notes: ["note", "commentaire", "remarque", "memo"],
+  etat: ["etat", "region", "departement", "state"],
+  codePays: ["code pays", "pays", "country"],
+  sellsyIdAdresse: ["id adresse sellsy", "sellsy id adresse"],
+  // Contact
+  sellsyIdContact: ["contact id", "id contact", "sellsy id contact", "id contact sellsy"],
+  civiliteContact: ["civilite contact", "civilite", "titre"],
+  prenomContact: ["prenom contact", "prenom"],
+  nomContact: ["nom contact", "nom de famille"],
+  fonctionContact: ["fonction contact", "fonction", "poste", "titre fonction"],
+  emailContact: ["email contact", "e-mail contact", "email", "courriel", "mail"],
+  telephoneContact: ["telephone contact", "tel contact", "telephone fixe", "telephone", "phone"],
+  mobileContact: ["mobile contact", "mobile", "portable", "gsm"],
+  faxContact: ["fax contact", "fax"],
+  webContact: ["web contact", "site web contact", "site web", "website"],
+  anniversaireContact: ["anniversaire contact", "anniversaire", "date de naissance", "birthdate"],
+  noteContact: ["contact note", "note contact", "note du contact", "notes contact"],
+  // Reseaux
+  twitterContact: ["twitter contact", "twitter", "x.com"],
+  linkedinContact: ["linkedin contact", "linkedin"],
+  facebookContact: ["facebook contact", "facebook"],
+  viadeoContact: ["viadeo contact", "viadeo"],
+  // Marketing
+  smartTags: ["smart tags", "smart_tags", "tags", "etiquettes"],
+  inscritEmail: ["inscrit campagnes email", "inscrit email", "opt-in email"],
+  inscritSms: ["inscrit campagnes sms", "inscrit sms", "opt-in sms"],
+  // Roles
+  contactPrincipal: ["contact principal"],
+  contactFacturation: ["contact de facturation", "contact facturation"],
+  contactRelance: ["contact de relance", "contact relance"],
+  // Dates
+  dateCreation: ["date de creation", "date creation", "created at"],
+  dateModification: ["date de derniere modification", "date modification", "updated at", "last modified"],
 };
 
-function normalize(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
-}
-
+// Algo en 2 passes pour eviter les matches trompeurs (ex: "NOM CONTACT"
+// hijacke par le hint loose "nom" de raisonSociale). Pass 1 : match exact.
+// Pass 2 : match par substring — seulement pour les headers non encore mappes.
 function autoDetectMapping(headers: string[]): Record<string, FieldKey> {
-  const mapping: Record<string, FieldKey> = {};
+  const mapping: Record<string, FieldKey> = Object.fromEntries(
+    headers.map((h) => [h, "__ignore__"])
+  ) as Record<string, FieldKey>;
   const used = new Set<string>();
+
+  // --- Pass 1 : exact match (n === hint)
   for (const h of headers) {
     const n = normalize(h);
-    let best: FieldKey = "__ignore__";
     for (const [field, hints] of Object.entries(HEADER_HINTS)) {
       if (used.has(field)) continue;
-      if (hints.some((hint) => n.includes(hint))) {
-        best = field as FieldKey;
+      if (hints.some((hint) => n === hint)) {
+        mapping[h] = field as FieldKey;
+        used.add(field);
         break;
       }
     }
-    if (best !== "__ignore__") used.add(best);
-    mapping[h] = best;
   }
+
+  // --- Pass 2 : substring match, uniquement pour headers encore non mappes
+  for (const h of headers) {
+    if (mapping[h] !== "__ignore__") continue;
+    const n = normalize(h);
+    for (const [field, hints] of Object.entries(HEADER_HINTS)) {
+      if (used.has(field)) continue;
+      if (hints.some((hint) => n.includes(hint))) {
+        mapping[h] = field as FieldKey;
+        used.add(field);
+        break;
+      }
+    }
+  }
+
   return mapping;
 }
 
-// Essaie de rattacher un secteur brut (libre) a un id de la liste SECTEURS.
+// Rattache un secteur brut a un id SECTEURS.
 function matchSecteur(raw: string): Secteur | null {
   const n = normalize(raw);
-  if (!n) return null; // input vide -> pas de fallback "restauration" trompeur
-  // Match direct sur l'id
+  if (!n) return null;
   const direct = SECTEURS.find((s) => s.id === n);
   if (direct) return direct.id;
-  // Match sur le label (strict : les deux non-vides pour eviter includes("") = true)
   const byLabel = SECTEURS.find((s) => {
     const label = normalize(s.label);
     return label.length > 0 && (label.includes(n) || n.includes(label));
   });
   if (byLabel) return byLabel.id;
-  // Heuristiques FR
   if (/resto|restaur|bar|cafe|brasser|pizzer/.test(n)) return "restauration";
   if (/archi|maitre/.test(n)) return "architecte";
   if (/boutique|magasin|commerce|retail/.test(n)) return "retail";
@@ -102,25 +276,38 @@ function matchSecteur(raw: string): Secteur | null {
   return null;
 }
 
+// Parse "oui"/"non"/"1"/"0"/"true"/"false" -> boolean
+function parseBool(raw: string): boolean {
+  const n = normalize(raw);
+  return /^(oui|yes|y|true|1|vrai|o)$/.test(n);
+}
+
+// =============================================================================
+// Composant
+// =============================================================================
+
 interface Props {
   open: boolean;
   onClose: () => void;
-  onImported: (accounts: Account[]) => void;
+  onImported: (result: { accounts: Account[]; contacts: Contact[] }) => void;
 }
 
 type Row = Record<string, unknown>;
-type ParsedFile = {
-  filename: string;
-  headers: string[];
-  rows: Row[];
+type ParsedFile = { filename: string; headers: string[]; rows: Row[] };
+
+type ImportResult = {
+  ok: number;
+  createdContacts: number;
+  skipped: number;
+  errors: string[];
 };
 
 export function SellsyImport({ open, onClose, onImported }: Props) {
   const [file, setFile] = useState<ParsedFile | null>(null);
   const [mapping, setMapping] = useState<Record<string, FieldKey>>({});
-  const [defaultSource, setDefaultSource] = useState<Source>("partenaire");
+  const [defaultSource, setDefaultSource] = useState<Source>("ancien_client");
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<{ ok: number; skipped: number; errors: string[] } | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
 
   const missingRaisonSociale = useMemo(
     () => !Object.values(mapping).includes("raisonSociale"),
@@ -130,46 +317,12 @@ export function SellsyImport({ open, onClose, onImported }: Props) {
   async function handleFile(f: File) {
     setResult(null);
     try {
-      const buffer = await f.arrayBuffer();
-      const wb = XLSX.read(buffer, { type: "array" });
-      const firstSheet = wb.SheetNames[0];
-      if (!firstSheet) throw new Error("Aucune feuille trouvée.");
-      const ws = wb.Sheets[firstSheet];
-      const json: Row[] = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
-      if (json.length === 0) {
-        setFile({ filename: f.name, headers: [], rows: [] });
-        return;
-      }
-      const headers = Object.keys(json[0]);
-      setFile({ filename: f.name, headers, rows: json });
-      setMapping(autoDetectMapping(headers));
+      const parsed = await parseSpreadsheet(f);
+      setFile(parsed);
+      setMapping(autoDetectMapping(parsed.headers));
     } catch (e) {
-      setResult({ ok: 0, skipped: 0, errors: [`Lecture impossible : ${(e as Error).message}`] });
+      setResult({ ok: 0, createdContacts: 0, skipped: 0, errors: [`Lecture impossible : ${(e as Error).message}`] });
     }
-  }
-
-  function buildAccountFromRow(r: Row): Omit<Account, "id" | "createdAt"> | null {
-    const get = (field: FieldKey): string => {
-      const col = Object.entries(mapping).find(([, f]) => f === field)?.[0];
-      if (!col) return "";
-      const v = r[col];
-      return v === null || v === undefined ? "" : String(v).trim();
-    };
-    const raisonSociale = get("raisonSociale");
-    if (!raisonSociale) return null; // ligne sans nom -> ignoree
-    const secteurMatched = matchSecteur(get("secteur")) ?? "tertiaire";
-    return {
-      raisonSociale,
-      secteur: secteurMatched,
-      source: defaultSource,
-      adresse: get("adresse"),
-      codePostal: get("codePostal"),
-      ville: get("ville"),
-      telephone: get("telephone") || undefined,
-      email: get("email") || undefined,
-      siret: get("siret") || undefined,
-      notes: get("notes") || undefined,
-    };
   }
 
   async function doImport() {
@@ -178,37 +331,157 @@ export function SellsyImport({ open, onClose, onImported }: Props) {
     const errors: string[] = [];
     let ok = 0;
     let skipped = 0;
-    const created: Account[] = [];
+    let createdContacts = 0;
+    const createdAccounts: Account[] = [];
+    const createdContactsList: Contact[] = [];
+
+    // Pool : liste vivante des comptes (pre-existants + crees pendant l'import)
+    const accountsPool: Account[] = useDemoData ? [] : await db.listAccounts();
+
+    const getCol = (row: Row, field: FieldKey): string => {
+      const col = Object.entries(mapping).find(([, f]) => f === field)?.[0];
+      if (!col) return "";
+      const v = row[col];
+      return v === null || v === undefined ? "" : String(v).trim();
+    };
 
     for (let i = 0; i < file.rows.length; i++) {
       const row = file.rows[i];
-      const payload = buildAccountFromRow(row);
-      if (!payload) {
+      const raisonSociale = getCol(row, "raisonSociale");
+      if (!raisonSociale) {
         skipped++;
         continue;
       }
+
       try {
+        // -------- Adresse : concatener les parties renseignees --------
+        const adresseParts = [
+          getCol(row, "adressePartie1"),
+          getCol(row, "adressePartie2"),
+          getCol(row, "adressePartie3"),
+          getCol(row, "adressePartie4"),
+        ].filter((s) => s.length > 0);
+        const adresse = adresseParts.join(", ");
+
+        // -------- Notes extras : rassembler les champs sans place ailleurs --
+        const extras: string[] = [];
+        const pushExtra = (label: string, val: string) => {
+          if (val) extras.push(`${label}: ${val}`);
+        };
+        pushExtra("ID Sellsy", getCol(row, "sellsyIdSociete"));
+        pushExtra("Type société", getCol(row, "typeSociete"));
+        pushExtra("État/Région", getCol(row, "etat"));
+        pushExtra("Pays", getCol(row, "codePays"));
+        pushExtra("Smart Tags", getCol(row, "smartTags"));
+        pushExtra("Site web", getCol(row, "webContact"));
+        pushExtra("LinkedIn", getCol(row, "linkedinContact"));
+        pushExtra("Twitter", getCol(row, "twitterContact"));
+        pushExtra("Facebook", getCol(row, "facebookContact"));
+        pushExtra("Viadeo", getCol(row, "viadeoContact"));
+        pushExtra("Fax", getCol(row, "faxContact"));
+        pushExtra("Anniversaire contact", getCol(row, "anniversaireContact"));
+        pushExtra("Note contact", getCol(row, "noteContact"));
+        pushExtra("Créé le (Sellsy)", getCol(row, "dateCreation"));
+        pushExtra("Modifié le (Sellsy)", getCol(row, "dateModification"));
+
+        const accountPayload: Omit<Account, "id" | "createdAt"> = {
+          raisonSociale,
+          secteur: matchSecteur(getCol(row, "secteur")) ?? "tertiaire",
+          source: defaultSource,
+          adresse,
+          codePostal: getCol(row, "codePostal"),
+          ville: getCol(row, "ville"),
+          telephone: getCol(row, "telephoneSociete") || undefined,
+          email: getCol(row, "emailSociete") || undefined,
+          siret: getCol(row, "siret") || undefined,
+          notes: extras.length > 0 ? extras.join(" | ") : undefined,
+        };
+
+        // -------- Creation/matching du compte --------
+        let savedAccount: Account;
         if (useDemoData) {
-          // Mode demo : on simule sans ecrire en DB, juste pour preview.
-          created.push({
-            ...payload,
+          savedAccount = {
+            ...accountPayload,
             id: `demo_a_${Date.now()}_${i}`,
             createdAt: new Date().toISOString(),
-          });
-          ok++;
+          };
         } else {
-          const saved = await db.createAccount(payload);
-          created.push(saved);
-          ok++;
+          const existing = matchAccountByName(raisonSociale, accountsPool);
+          if (existing) {
+            // Compte existant : completer uniquement les champs vides
+            const patch: Partial<Account> = {};
+            if (!existing.adresse?.trim() && adresse) patch.adresse = adresse;
+            if (!existing.codePostal?.trim() && accountPayload.codePostal) patch.codePostal = accountPayload.codePostal;
+            if (!existing.ville?.trim() && accountPayload.ville) patch.ville = accountPayload.ville;
+            if (!existing.telephone && accountPayload.telephone) patch.telephone = accountPayload.telephone;
+            if (!existing.email && accountPayload.email) patch.email = accountPayload.email;
+            if (!existing.siret && accountPayload.siret) patch.siret = accountPayload.siret;
+            if (!existing.notes && accountPayload.notes) patch.notes = accountPayload.notes;
+            if (Object.keys(patch).length > 0) {
+              savedAccount = await db.updateAccount(existing.id, patch);
+              const idx = accountsPool.indexOf(existing);
+              if (idx >= 0) accountsPool[idx] = savedAccount;
+            } else {
+              savedAccount = existing;
+            }
+          } else {
+            savedAccount = await db.createAccount(accountPayload);
+            accountsPool.push(savedAccount);
+            createdAccounts.push(savedAccount);
+          }
         }
+
+        // -------- Contact : cree si prenom ou nom contact mappe --------
+        const prenom = getCol(row, "prenomContact");
+        const nom = getCol(row, "nomContact");
+        if (prenom || nom) {
+          const civilite = getCol(row, "civiliteContact");
+          // Civilite prefixe le prenom si present ("M. Jean")
+          const prenomFinal = civilite ? `${civilite} ${prenom}`.trim() : prenom;
+          // Role : contact principal -> decideur, facturation -> compta, sinon autre
+          const isPrincipal = parseBool(getCol(row, "contactPrincipal"));
+          const isFacturation = parseBool(getCol(row, "contactFacturation"));
+          const role: Contact["role"] = isPrincipal
+            ? "decideur"
+            : isFacturation
+            ? "compta"
+            : "autre";
+          // Telephone : mobile prioritaire, fallback fixe
+          const telephone = getCol(row, "mobileContact") || getCol(row, "telephoneContact");
+
+          const contactPayload: Omit<Contact, "id"> = {
+            accountId: savedAccount.id,
+            prenom: prenomFinal || "—",
+            nom: nom || "—",
+            fonction: getCol(row, "fonctionContact") || undefined,
+            email: getCol(row, "emailContact") || undefined,
+            telephone: telephone || undefined,
+            role,
+          };
+          try {
+            if (useDemoData) {
+              createdContactsList.push({ ...contactPayload, id: `demo_c_${Date.now()}_${i}` });
+            } else {
+              const savedContact = await db.createContact(contactPayload);
+              createdContactsList.push(savedContact);
+            }
+            createdContacts++;
+          } catch (e) {
+            errors.push(`Ligne ${i + 2} (${raisonSociale}) — contact non créé : ${(e as Error).message}`);
+          }
+        }
+
+        ok++;
       } catch (e) {
-        errors.push(`Ligne ${i + 2} (${payload.raisonSociale}) : ${(e as Error).message}`);
+        errors.push(`Ligne ${i + 2} (${raisonSociale}) : ${(e as Error).message}`);
       }
     }
 
-    setResult({ ok, skipped, errors });
+    setResult({ ok, createdContacts, skipped, errors });
     setImporting(false);
-    if (created.length > 0) onImported(created);
+    if (createdAccounts.length > 0 || createdContactsList.length > 0) {
+      onImported({ accounts: createdAccounts, contacts: createdContactsList });
+    }
   }
 
   function reset() {
@@ -221,6 +494,7 @@ export function SellsyImport({ open, onClose, onImported }: Props) {
     <Modal
       open={open}
       onClose={() => {
+        if (importing) return;
         reset();
         onClose();
       }}
@@ -229,7 +503,7 @@ export function SellsyImport({ open, onClose, onImported }: Props) {
       footer={
         <>
           <div className="flex-1 text-[11px] text-slate-500">
-            Formats acceptés : <strong>.xlsx</strong>, <strong>.xls</strong>, <strong>.csv</strong>. Exporte tes clients depuis Sellsy → Clients → <em>Exporter</em>.
+            Formats : <strong>.xlsx</strong>, <strong>.xls</strong>, <strong>.csv</strong>. Sellsy → Clients → <em>Exporter</em>.
           </div>
           <Button variant="ghost" onClick={() => { reset(); onClose(); }} disabled={importing}>
             {result ? "Fermer" : "Annuler"}
@@ -266,16 +540,13 @@ export function SellsyImport({ open, onClose, onImported }: Props) {
 }
 
 // -----------------------------------------------------------------------------
-// DropZone : input file + drag-drop
+// DropZone
 // -----------------------------------------------------------------------------
 function DropZone({ onFile }: { onFile: (f: File) => void }) {
   const [dragging, setDragging] = useState(false);
   return (
     <label
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDragging(true);
-      }}
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
       onDragLeave={() => setDragging(false)}
       onDrop={(e) => {
         e.preventDefault();
@@ -294,10 +565,10 @@ function DropZone({ onFile }: { onFile: (f: File) => void }) {
       </div>
       <div className="text-center">
         <div className="font-semibold text-slate-900 dark:text-slate-100 text-sm">
-          Déposer un export Sellsy
+          Déposer un export Sellsy (clients + contacts)
         </div>
         <div className="text-xs text-slate-500 mt-1">
-          ou cliquer pour choisir un fichier (.xlsx, .xls, .csv)
+          ou cliquer pour choisir (.xlsx, .xls, .csv)
         </div>
       </div>
       <input
@@ -314,7 +585,7 @@ function DropZone({ onFile }: { onFile: (f: File) => void }) {
 }
 
 // -----------------------------------------------------------------------------
-// MappingView : mapping colonnes + preview
+// MappingView
 // -----------------------------------------------------------------------------
 function MappingView({
   file,
@@ -348,9 +619,7 @@ function MappingView({
             className="h-8 text-xs py-0 min-w-[160px]"
           >
             {SOURCES.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
+              <option key={s.id} value={s.id}>{s.label}</option>
             ))}
           </Select>
         </div>
@@ -359,18 +628,18 @@ function MappingView({
       {missingRaisonSociale && (
         <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 text-xs">
           <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-          Aucune colonne n'est mappée sur <strong>Raison sociale</strong>. Sélectionnez-en une ci-dessous — c'est le seul champ obligatoire.
+          Aucune colonne n'est mappée sur <strong>Nom société / Raison sociale</strong>. Sélectionnez-en une — c'est le seul champ obligatoire.
         </div>
       )}
 
       <div>
         <div className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">
-          Correspondance des colonnes (modifiable)
+          Correspondance des colonnes
         </div>
-        <div className="space-y-1.5 max-h-[260px] overflow-y-auto pr-1">
+        <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
           {file.headers.map((h) => (
             <div key={h} className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-center">
-              <div className="text-xs text-slate-700 dark:text-slate-200 truncate font-medium">
+              <div className="text-xs text-slate-700 dark:text-slate-200 truncate font-medium" title={h}>
                 {h}
               </div>
               <Select
@@ -381,10 +650,14 @@ function MappingView({
                 className="h-9 text-xs py-0"
               >
                 <option value="__ignore__">— Ignorer —</option>
-                {Object.entries(FIELD_LABELS).map(([k, label]) => (
-                  <option key={k} value={k}>
-                    {label}
-                  </option>
+                {FIELD_GROUPS.map((g) => (
+                  <optgroup key={g.label} label={g.label}>
+                    {g.fields.map((f) => (
+                      <option key={f} value={f}>
+                        {FIELD_LABELS[f]}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </Select>
             </div>
@@ -402,10 +675,7 @@ function MappingView({
               <thead className="bg-slate-50 dark:bg-slate-900/50">
                 <tr>
                   {file.headers.map((h) => (
-                    <th
-                      key={h}
-                      className="text-left px-2 py-1.5 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap"
-                    >
+                    <th key={h} className="text-left px-2 py-1.5 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
                       {h}
                       {mapping[h] && mapping[h] !== "__ignore__" && (
                         <span className="block text-[9px] font-normal text-[#C9A961] -mt-0.5">
@@ -420,10 +690,7 @@ function MappingView({
                 {preview.map((r, i) => (
                   <tr key={i} className="border-t border-slate-100 dark:border-slate-800">
                     {file.headers.map((h) => (
-                      <td
-                        key={h}
-                        className="px-2 py-1 text-slate-600 dark:text-slate-300 whitespace-nowrap max-w-[180px] truncate"
-                      >
+                      <td key={h} className="px-2 py-1 text-slate-600 dark:text-slate-300 whitespace-nowrap max-w-[180px] truncate">
                         {String(r[h] ?? "")}
                       </td>
                     ))}
@@ -439,37 +706,32 @@ function MappingView({
 }
 
 // -----------------------------------------------------------------------------
-// ResultView : bilan apres import
+// ResultView
 // -----------------------------------------------------------------------------
-function ResultView({
-  result,
-  onReset,
-}: {
-  result: { ok: number; skipped: number; errors: string[] };
-  onReset: () => void;
-}) {
+function ResultView({ result, onReset }: { result: ImportResult; onReset: () => void }) {
   const hasErrors = result.errors.length > 0;
   return (
     <div className="space-y-4">
-      <div
-        className={`flex items-start gap-3 p-4 rounded-xl ${
-          hasErrors
-            ? "bg-amber-50 dark:bg-amber-950/30"
-            : "bg-emerald-50 dark:bg-emerald-950/30"
-        }`}
-      >
+      <div className={`flex items-start gap-3 p-4 rounded-xl ${
+        hasErrors ? "bg-amber-50 dark:bg-amber-950/30" : "bg-emerald-50 dark:bg-emerald-950/30"
+      }`}>
         {hasErrors ? (
           <AlertTriangle size={22} className="text-amber-600 flex-shrink-0 mt-0.5" />
         ) : (
           <CheckCircle2 size={22} className="text-emerald-600 flex-shrink-0 mt-0.5" />
         )}
-        <div className="text-sm">
+        <div className="text-sm space-y-1">
           <div className="font-semibold text-slate-900 dark:text-slate-100">
-            {result.ok} compte{result.ok > 1 ? "s" : ""} importé{result.ok > 1 ? "s" : ""}
+            {result.ok} ligne{result.ok > 1 ? "s" : ""} importée{result.ok > 1 ? "s" : ""}
           </div>
+          {result.createdContacts > 0 && (
+            <div className="text-xs text-slate-600 dark:text-slate-400">
+              {result.createdContacts} contact{result.createdContacts > 1 ? "s" : ""} créé{result.createdContacts > 1 ? "s" : ""} et rattaché{result.createdContacts > 1 ? "s" : ""} aux comptes.
+            </div>
+          )}
           {result.skipped > 0 && (
-            <div className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-              {result.skipped} ligne{result.skipped > 1 ? "s" : ""} ignorée{result.skipped > 1 ? "s" : ""} (raison sociale manquante)
+            <div className="text-xs text-slate-600 dark:text-slate-400">
+              {result.skipped} ligne{result.skipped > 1 ? "s" : ""} ignorée{result.skipped > 1 ? "s" : ""} (raison sociale manquante).
             </div>
           )}
         </div>
@@ -482,9 +744,7 @@ function ResultView({
           </div>
           <div className="max-h-[220px] overflow-y-auto text-xs space-y-1 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg">
             {result.errors.map((e, i) => (
-              <div key={i} className="text-red-600 dark:text-red-400">
-                {e}
-              </div>
+              <div key={i} className="text-red-600 dark:text-red-400">{e}</div>
             ))}
           </div>
         </div>

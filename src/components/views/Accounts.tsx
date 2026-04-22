@@ -219,8 +219,12 @@ export function AccountsView({ state, setState }: Props) {
       <SellsyImport
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        onImported={(created) =>
-          setState((s) => ({ ...s, accounts: [...created, ...s.accounts] }))
+        onImported={({ accounts, contacts }) =>
+          setState((s) => ({
+            ...s,
+            accounts: [...accounts, ...s.accounts],
+            contacts: [...contacts, ...s.contacts],
+          }))
         }
       />
 
