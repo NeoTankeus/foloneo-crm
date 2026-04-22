@@ -6,6 +6,7 @@ import { DealEditor } from "@/components/modals/DealEditor";
 import { ETAPES } from "@/lib/constants";
 import { fmtEUR, fmtDateShort, cx, upsertById, removeById } from "@/lib/helpers";
 import { useDemoData } from "@/lib/supabase";
+import { celebrate } from "@/lib/celebrate";
 import * as db from "@/lib/db";
 import type { AppState, Deal, EtapeId } from "@/types";
 
@@ -45,6 +46,10 @@ export function Pipeline({ state, setState }: Props) {
     const updated: Deal = { ...deal, etape: target, probabilite: newProba };
     // Optimiste
     setState((s) => ({ ...s, deals: upsertById(s.deals, updated) }));
+    // Celebration quand une affaire est signee (passage vers "signe")
+    if (target === "signe" && deal.etape !== "signe") {
+      celebrate("signature");
+    }
     if (!useDemoData) {
       try {
         await db.updateDeal(dealId, { etape: target, probabilite: newProba });

@@ -18,12 +18,13 @@ const DEFAULT_ZOOM = 10;
 const DEFAULT_PITCH = 45;
 const DEFAULT_BEARING = -15;
 
-// Trois niveaux visuels :
-//  - signed : client avec au moins un devis signé ou une facture payée
-//  - active : client avec au moins un devis envoyé ou une facture en cours
-//  - client : client enregistré (importé depuis Sellsy ou source "ancien_client")
-// Le niveau "prospect" n'existe plus : un compte en base = un client.
-type Tier = "signed" | "active" | "client";
+// Quatre niveaux alignes sur la terminologie metier demandee :
+//  - facture   : client avec au moins une facture emise (= signe, CA reel)
+//  - devis     : client avec au moins un devis (mais pas encore de facture)
+//  - pipeline  : client avec une affaire en cours (deal non signe/perdu)
+//  - client    : compte enregistre sans activite actuelle
+// Priorite (du plus fort au plus faible) : facture > devis > pipeline > client
+type Tier = "facture" | "devis" | "pipeline" | "client";
 
 type ClientMarker = {
   accountId: string;
@@ -45,17 +46,18 @@ type ClientMarker = {
   commercialNom?: string;
 };
 
-// Couleurs par niveau d'activite.
 const TIER_COLOR: Record<Tier, string> = {
-  signed: "#C9A961",
-  active: "#3B82F6",
-  client: "#64748B",
+  facture: "#C9A961",   // or  — CA reel facture
+  devis:   "#3B82F6",   // bleu — devis en circulation
+  pipeline:"#A78BFA",   // violet — affaire en prospection pipeline
+  client:  "#94A3B8",   // gris  — client enregistre, aucune activite
 };
 
 const TIER_LABEL: Record<Tier, string> = {
-  signed: "Signés",
-  active: "Actifs",
-  client: "Clients",
+  facture: "Facturés",
+  devis:   "Devis",
+  pipeline:"Pipeline",
+  client:  "Clients",
 };
 
 interface Props {
@@ -71,18 +73,18 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
   const [fullscreen, setFullscreen] = useState(false);
   // Filtre par niveau : l'utilisateur peut masquer les prospects / actifs / signes
   const [activeTiers, setActiveTiers] = useState<Record<Tier, boolean>>({
-    signed: true,
-    active: true,
+    facture: true,
+    devis: true,
+    pipeline: true,
     client: true,
   });
 
   // Agrege : tous les comptes avec lat/lng renseignes, avec stats rattachees.
-  // Niveau du compte :
-  //  - signed : au moins un devis signe_achat/signe_leasing OU facture payee
-  //  - active : au moins un devis envoye OU une facture
-  //  - client : compte enregistre sans activite courante (tous les comptes
-  //    importes de Sellsy ou saisis manuellement le sont par defaut — ce
-  //    sont deja des clients)
+  // Niveau du compte (priorite du plus fort au plus faible) :
+  //  - facture  : au moins une facture emise (CA reel, signe = facture)
+  //  - devis    : au moins un devis cree (hors perdu) mais pas encore facture
+  //  - pipeline : au moins une affaire dans le pipeline (deal en cours)
+  //  - client   : compte sans activite courante
   const markers = useMemo<ClientMarker[]>(() => {
     const out: ClientMarker[] = [];
     for (const acc of state.accounts) {
@@ -103,7 +105,10 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
       const signedQuotes = accountQuotes.filter(
         (q) => q.status === "signe_achat" || q.status === "signe_leasing"
       );
-      const activeQuotes = accountQuotes.filter((q) => q.status === "envoye");
+      const activeQuotes = accountQuotes.filter((q) => q.status !== "perdu");
+      const accountDealsActifs = state.deals.filter(
+        (d) => d.accountId === acc.id && d.etape !== "signe" && d.etape !== "perdu"
+      );
 
       const totalSignedHT = signedQuotes.reduce(
         (s, q) => s + calcDevisTotaux(q, settings, state.products).totalHT,
@@ -114,11 +119,14 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
         .filter((f) => f.status === "payee")
         .reduce((s, f) => s + f.montantHT, 0);
 
+      // Priorite : facture > devis > pipeline > client
       let tier: Tier;
-      if (signedQuotes.length > 0 || accountInvoices.some((f) => f.status === "payee")) {
-        tier = "signed";
-      } else if (activeQuotes.length > 0 || accountInvoices.length > 0) {
-        tier = "active";
+      if (accountInvoices.length > 0) {
+        tier = "facture";
+      } else if (activeQuotes.length > 0) {
+        tier = "devis";
+      } else if (accountDealsActifs.length > 0) {
+        tier = "pipeline";
       } else {
         tier = "client";
       }
@@ -153,6 +161,7 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
     state.accounts,
     state.quotes,
     state.invoices,
+    state.deals,
     state.products,
     state.commerciaux,
     settings,
@@ -232,14 +241,16 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
     markers.forEach((m) => {
       const el = document.createElement("div");
       el.className = "foloneo-marker";
-      // Taille selon le tier : signed = plus gros, prospect = discret
-      const size = m.tier === "signed" ? 32 : m.tier === "active" ? 28 : 22;
+      // Taille selon le tier : facture = plus gros, client = discret
+      const size = m.tier === "facture" ? 32 : m.tier === "devis" ? 28 : m.tier === "pipeline" ? 24 : 22;
       const badgeText =
-        m.tier === "signed"
-          ? String(m.nbSignedQuotes || m.nbInvoices || 1)
-          : m.tier === "active"
-            ? String(m.nbQuotes + m.nbInvoices)
-            : "";
+        m.tier === "facture"
+          ? String(m.nbInvoices || 1)
+          : m.tier === "devis"
+            ? String(m.nbQuotes || 1)
+            : m.tier === "pipeline"
+              ? "P"
+              : "";
       el.style.cssText = `
         width: ${size}px; height: ${size}px; border-radius: 50%;
         background: ${m.color}; border: 3px solid white;
@@ -286,9 +297,8 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
     return () => window.clearTimeout(id);
   }, [fullscreen]);
 
-  // Stats globales affichees sous la carte
   const counts = useMemo(() => {
-    const byTier = { signed: 0, active: 0, client: 0 };
+    const byTier = { facture: 0, devis: 0, pipeline: 0, client: 0 };
     let totalSigned = 0;
     let totalInvoiced = 0;
     for (const m of markers) {
@@ -342,7 +352,7 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
 
         {/* Toggles tiers (en haut a droite de la carte, sous la nav MapLibre) */}
         <div className="absolute top-2 right-12 z-10 flex flex-col gap-1">
-          {(["signed", "active", "client"] as const).map((t) => (
+          {(["facture", "devis", "pipeline", "client"] as const).map((t) => (
             <button
               key={t}
               onClick={() => toggleTier(t)}

@@ -5,6 +5,7 @@ import { Input, Select } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { uid } from "@/lib/helpers";
 import { useDemoData } from "@/lib/supabase";
+import { celebrate } from "@/lib/celebrate";
 import * as db from "@/lib/db";
 import type { Invoice, Account, Commercial, InvoiceStatus, InvoiceType } from "@/types";
 
@@ -87,11 +88,14 @@ export function InvoiceEditor({
     setError(null);
     try {
       let saved: Invoice;
+      const isNew = !invoice;
       if (invoice) {
         saved = useDemoData ? { ...invoice, ...form } : await db.updateInvoice(invoice.id, form);
       } else {
         saved = useDemoData ? { ...form, id: uid("inv") } : await db.createInvoice(form);
       }
+      // Celebration a la creation d'une facture (encaissement a venir)
+      if (isNew) celebrate("facture");
       onSaved(saved);
       onClose();
     } catch (e) {

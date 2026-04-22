@@ -141,7 +141,14 @@ export function Dashboard({ state, setState, settings, commercialFilter, periodF
   //  - objectif : cible mensuelle (ligne pointillee)
   const chartData = useMemo(() => {
     const now = new Date();
-    const months: {
+    // Nombre de mois affiches selon le filtre periode choisi en haut.
+    //  - month    : 1 mois (tres resserre -> on affiche par semaine du mois courant)
+    //  - quarter  : 3 mois
+    //  - 6months  : 6 mois (defaut)
+    //  - year     : 12 mois
+    // Le graphique se redimensionne automatiquement a chaque clic sur le filtre.
+    const nMonths = periodFilter === "year" ? 12 : periodFilter === "quarter" ? 3 : periodFilter === "month" ? 1 : 6;
+    const buckets: {
       label: string;
       ca: number;
       caPaye: number;
@@ -149,19 +156,42 @@ export function Dashboard({ state, setState, settings, commercialFilter, periodF
       start: Date;
       end: Date;
     }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const start = new Date(d);
-      const end = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-      months.push({
-        label: d.toLocaleDateString("fr-FR", { month: "short" }),
-        ca: 0,
-        caPaye: 0,
-        objectif: 0,
-        start,
-        end,
-      });
+
+    if (periodFilter === "month") {
+      // Vue "mois" : 4 buckets hebdomadaires sur le mois courant, pour voir
+      // la dynamique a grain fin quand tu veux zoomer sur ce mois.
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const weekMs = 7 * 24 * 3600 * 1000;
+      for (let w = 0; w < 4; w++) {
+        const start = new Date(monthStart.getTime() + w * weekMs);
+        const end = w === 3 ? monthEnd : new Date(monthStart.getTime() + (w + 1) * weekMs);
+        if (start >= monthEnd) break;
+        buckets.push({
+          label: `S${w + 1}`,
+          ca: 0,
+          caPaye: 0,
+          objectif: 0,
+          start,
+          end,
+        });
+      }
+    } else {
+      for (let i = nMonths - 1; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const start = new Date(d);
+        const end = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+        buckets.push({
+          label: d.toLocaleDateString("fr-FR", nMonths >= 12 ? { month: "short" } : { month: "short" }),
+          ca: 0,
+          caPaye: 0,
+          objectif: 0,
+          start,
+          end,
+        });
+      }
     }
+    const months = buckets;
     // CA depuis invoices (date d'emission -> mois). Filtre par commercial si demande.
     invoices.forEach((f) => {
       if (commercialFilter !== "all" && f.commercialId !== commercialFilter) return;
@@ -182,9 +212,11 @@ export function Dashboard({ state, setState, settings, commercialFilter, periodF
       (s, c) => s + c.objectifMensuel,
       0
     );
-    months.forEach((m) => (m.objectif = objectifMensuel));
+    // Si on affiche par semaine (filtre mois), objectif hebdo = objectif mensuel / 4
+    const objectifParBucket = periodFilter === "month" ? objectifMensuel / 4 : objectifMensuel;
+    months.forEach((m) => (m.objectif = objectifParBucket));
     return months;
-  }, [invoices, state.commerciaux, commercialFilter]);
+  }, [invoices, state.commerciaux, commercialFilter, periodFilter]);
 
   // Pipeline par etape
   const pipelineByEtape = useMemo(
@@ -290,7 +322,16 @@ export function Dashboard({ state, setState, settings, commercialFilter, periodF
         {/* Chart CA vs objectif */}
         <Card className="p-4 lg:col-span-2">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-sm">Évolution du CA facturé · 6 derniers mois</h2>
+            <h2 className="font-semibold text-sm">
+              Évolution du CA facturé ·{" "}
+              {periodFilter === "year"
+                ? "12 derniers mois"
+                : periodFilter === "quarter"
+                ? "3 derniers mois"
+                : periodFilter === "month"
+                ? "mois courant (par semaine)"
+                : "6 derniers mois"}
+            </h2>
             {!hideObjectives && (
               <Badge tone="gold">Objectif mensuel : {fmtEUR(chartData[0]?.objectif ?? 0)}</Badge>
             )}

@@ -5,6 +5,7 @@ import { Input, Select, Textarea } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { ETAPES } from "@/lib/constants";
 import { uid } from "@/lib/helpers";
+import { celebrate } from "@/lib/celebrate";
 import { useDemoData } from "@/lib/supabase";
 import * as db from "@/lib/db";
 import type { Deal, Account, Contact, Commercial } from "@/types";
@@ -88,6 +89,7 @@ export function DealEditor({
     try {
       let saved: Deal;
       const autoCreateAccount = !deal && !form.accountId;
+      const justSigned = form.etape === "signe" && (!deal || deal.etape !== "signe");
       if (deal) {
         saved = useDemoData ? { ...deal, ...form } : await db.updateDeal(deal.id, form);
       } else {
@@ -95,6 +97,7 @@ export function DealEditor({
           ? { ...form, id: uid("deal"), createdAt: new Date().toISOString() }
           : await db.createDeal(form);
       }
+      if (justSigned) celebrate("signature");
       onSaved(saved);
       // Si un compte a ete auto-cree cote DB, on propose au parent de rafraichir sa liste.
       if (autoCreateAccount && !useDemoData && onAccountsRefreshed) {

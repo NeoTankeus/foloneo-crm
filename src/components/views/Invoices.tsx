@@ -16,6 +16,7 @@ import {
   uid,
 } from "@/lib/helpers";
 import { useDemoData } from "@/lib/supabase";
+import { celebrate } from "@/lib/celebrate";
 import * as db from "@/lib/db";
 import type { AppState, Invoice, InvoiceStatus, Quote, Settings } from "@/types";
 
@@ -115,6 +116,7 @@ export function InvoicesView({ state, setState, settings }: Props) {
         ? { ...base, id: uid("inv") }
         : await db.createInvoice(base);
       setState((s) => ({ ...s, invoices: upsertById(s.invoices, saved) }));
+      celebrate("facture");
     } catch (e) {
       console.error(e);
       window.alert("Erreur lors de la création de la facture");

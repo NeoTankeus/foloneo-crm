@@ -10,6 +10,7 @@ import { calcDevisTotaux } from "@/lib/calculations";
 import { upsertById, removeById, cx, fmtEUR } from "@/lib/helpers";
 import { useDemoData } from "@/lib/supabase";
 import * as db from "@/lib/db";
+import { celebrate } from "@/lib/celebrate";
 import { useAuth } from "@/hooks/useAuth";
 import type { AppState, Quote, Settings } from "@/types";
 
@@ -107,6 +108,10 @@ export function QuoteWizard({
     try {
       let saved: Quote;
       const autoCreateAccount = !draft.accountId;
+      const justSigned =
+        (draft.status === "signe_achat" || draft.status === "signe_leasing") &&
+        (!quote || (quote.status !== "signe_achat" && quote.status !== "signe_leasing"));
+      const isNewDevis = !quote || !quote.id;
       if (quote && quote.id) {
         saved = useDemoData ? { ...draft } : await db.updateQuote(quote.id, draft);
       } else {
@@ -114,6 +119,9 @@ export function QuoteWizard({
           ? { ...draft, id: `demo_q_${Date.now()}` }
           : await db.createQuote(draft);
       }
+      // Celebrations : signature du devis (plus gros) > creation nouveau devis (petit ding)
+      if (justSigned) celebrate("signature");
+      else if (isNewDevis) celebrate("devis");
       // Si un compte a ete cree automatiquement cote DB, on recharge la liste
       // pour que l'UI (vues Clients, wizard, etc.) voie le nouveau compte.
       let accountsPatch: Awaited<ReturnType<typeof db.listAccounts>> | null = null;

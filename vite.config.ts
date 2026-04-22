@@ -27,6 +27,7 @@ export default defineConfig({
             if (id.includes("lucide-react")) return "vendor-icons";
             if (id.includes("maplibre-gl")) return "vendor-map";
             if (id.includes("xlsx")) return "vendor-xlsx";
+            if (id.includes("canvas-confetti")) return "vendor-confetti";
           }
         },
       },
