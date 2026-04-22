@@ -23,6 +23,7 @@ import { Stat } from "@/components/ui/overlays";
 import { ETAPES } from "@/lib/constants";
 import { fmtEUR, fmtPct, daysAgo, daysUntil } from "@/lib/helpers";
 import { useAuth } from "@/hooks/useAuth";
+import { useBackgroundGeocoder } from "@/hooks/useBackgroundGeocoder";
 import { VarMap3D } from "./VarMap3D";
 import { RemindersWidget } from "./RemindersWidget";
 import { SalesRankingTable } from "./SalesRankingTable";
@@ -42,6 +43,9 @@ export function Dashboard({ state, setState, settings, commercialFilter, periodF
   // pointillee et le pourcentage de progression dans le classement.
   const { currentCommercial } = useAuth();
   const hideObjectives = currentCommercial?.role === "dirigeant";
+  // Auto-geocodage des comptes ayant une adresse mais pas de lat/lng.
+  // Les markers apparaissent progressivement sur la carte pendant le processus.
+  const geocoderStatus = useBackgroundGeocoder(state.accounts, setState);
   // Periode de filtre
   const periodStart = useMemo(() => {
     const now = new Date();
@@ -397,7 +401,12 @@ export function Dashboard({ state, setState, settings, commercialFilter, periodF
             <MapPin size={14} className="text-[#C9A961]" />
             Implantations clients
           </h2>
-          <VarMap3D state={state} settings={settings} commercialFilter={commercialFilter} />
+          <VarMap3D
+            state={state}
+            settings={settings}
+            commercialFilter={commercialFilter}
+            geocoderStatus={geocoderStatus}
+          />
         </Card>
       </div>
 

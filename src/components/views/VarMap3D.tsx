@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { Map as MapLibreMap, Marker, Popup, LngLatBoundsLike } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Maximize2, Minimize2, Filter } from "lucide-react";
+import { Maximize2, Minimize2, Filter, Loader2 } from "lucide-react";
 import { fmtEUR } from "@/lib/helpers";
 import { calcDevisTotaux } from "@/lib/calculations";
-import type { AppState, Settings } from "@/types";
+import { SECTEURS } from "@/lib/constants";
+import type { AppState, Settings, Secteur } from "@/types";
+import type { GeocoderStatus } from "@/hooks/useBackgroundGeocoder";
 
 // -----------------------------------------------------------------------------
 // Style de carte : OpenFreeMap "Liberty" = vector tiles gratuites, style clair,
@@ -64,9 +66,10 @@ interface Props {
   state: AppState;
   settings: Settings;
   commercialFilter: string | "all";
+  geocoderStatus?: GeocoderStatus;
 }
 
-export function VarMap3D({ state, settings, commercialFilter }: Props) {
+export function VarMap3D({ state, settings, commercialFilter, geocoderStatus }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<Marker[]>([]);
@@ -78,6 +81,8 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
     pipeline: true,
     client: true,
   });
+  // Filtre par secteur
+  const [sectorFilter, setSectorFilter] = useState<Secteur | "all">("all");
 
   // Agrege : tous les comptes avec lat/lng renseignes, avec stats rattachees.
   // Niveau du compte (priorite du plus fort au plus faible) :
@@ -89,6 +94,7 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
     const out: ClientMarker[] = [];
     for (const acc of state.accounts) {
       if (typeof acc.latitude !== "number" || typeof acc.longitude !== "number") continue;
+      if (sectorFilter !== "all" && acc.secteur !== sectorFilter) continue;
 
       const accountQuotes = state.quotes.filter((q) => q.accountId === acc.id);
       const accountInvoices = state.invoices.filter((f) => f.accountId === acc.id);
@@ -167,6 +173,7 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
     settings,
     commercialFilter,
     activeTiers,
+    sectorFilter,
   ]);
 
   // Init MapLibre
@@ -309,6 +316,24 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
     return { byTier, totalSigned, totalInvoiced, total: markers.length };
   }, [markers]);
 
+  // Top secteurs : quels secteurs concentrent le plus de signatures (factures+devis signes)
+  const topSecteurs = useMemo(() => {
+    const bySecteur = new Map<string, { count: number; totalHT: number; label: string }>();
+    for (const m of markers) {
+      if (m.tier !== "facture") continue;
+      const secteur = m.secteur ?? "autre";
+      const label = SECTEURS.find((s) => s.id === secteur)?.label ?? secteur;
+      const cur = bySecteur.get(secteur) ?? { count: 0, totalHT: 0, label };
+      cur.count++;
+      cur.totalHT += m.totalInvoicedHT;
+      bySecteur.set(secteur, cur);
+    }
+    return [...bySecteur.entries()]
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => b.totalHT - a.totalHT)
+      .slice(0, 5);
+  }, [markers]);
+
   function toggleTier(t: Tier) {
     setActiveTiers((prev) => ({ ...prev, [t]: !prev[t] }));
   }
@@ -330,14 +355,33 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
       >
         <div ref={containerRef} className="absolute inset-0" />
 
-        {markers.length === 0 && (
+        {markers.length === 0 && !geocoderStatus?.active && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-slate-950/80 backdrop-blur-sm pointer-events-none p-4">
             <div className="text-center text-xs text-slate-500 max-w-[280px]">
-              Aucun client géolocalisé.<br />
+              Aucun client géolocalisé pour l'instant.<br />
               <span className="text-[10px] opacity-70">
-                Renseigne l'adresse dans la fiche client puis clique sur «&nbsp;Géolocaliser&nbsp;» dans la vue Comptes.
+                Les comptes avec une adresse sont géolocalisés automatiquement.
+                Pour les comptes sans adresse, ré-importe ton CSV Sellsy (adresse/CP/ville seront complétés, aucun doublon créé).
               </span>
             </div>
+          </div>
+        )}
+
+        {/* Bandeau geocodage en cours */}
+        {geocoderStatus?.active && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shadow-md rounded-lg px-3 py-2 text-[11px] flex items-center gap-2 max-w-[92%]">
+            <Loader2 size={12} className="animate-spin text-[#C9A961] flex-shrink-0" />
+            <span className="font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">
+              Géolocalisation
+            </span>
+            <span className="text-slate-600 dark:text-slate-400 tabular-nums">
+              {geocoderStatus.done}/{geocoderStatus.total}
+            </span>
+            {geocoderStatus.current && (
+              <span className="text-slate-500 truncate hidden sm:inline">
+                · {geocoderStatus.current}
+              </span>
+            )}
           </div>
         )}
 
@@ -378,21 +422,60 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
           <Filter size={11} className="opacity-70" />
           {markers.length} client{markers.length > 1 ? "s" : ""} géolocalisé{markers.length > 1 ? "s" : ""}
         </div>
-        {markers.length > 0 && (
-          <div className="flex items-center gap-3 tabular-nums">
-            {counts.totalSigned > 0 && (
-              <span className="font-semibold text-[#C9A961]">
-                {fmtEUR(counts.totalSigned)} HT signés
-              </span>
-            )}
-            {counts.totalInvoiced > 0 && (
-              <span className="font-semibold text-blue-600">
-                {fmtEUR(counts.totalInvoiced)} HT facturés
-              </span>
-            )}
-          </div>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Filtre secteur */}
+          <select
+            value={sectorFilter}
+            onChange={(e) => setSectorFilter(e.target.value as Secteur | "all")}
+            className="h-7 px-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[11px] text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#C9A961]"
+          >
+            <option value="all">Tous secteurs</option>
+            {SECTEURS.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+          {markers.length > 0 && (
+            <div className="flex items-center gap-3 tabular-nums text-[11px]">
+              {counts.totalInvoiced > 0 && (
+                <span className="font-semibold text-blue-600">
+                  {fmtEUR(counts.totalInvoiced)} facturés
+                </span>
+              )}
+              {counts.totalSigned > 0 && counts.totalSigned !== counts.totalInvoiced && (
+                <span className="font-semibold text-[#C9A961]">
+                  {fmtEUR(counts.totalSigned)} signés
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Top secteurs signés (visible uniquement en mode "tous secteurs") */}
+      {sectorFilter === "all" && topSecteurs.length > 0 && !fullscreen && (
+        <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
+            Top secteurs facturés
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {topSecteurs.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setSectorFilter(s.id as Secteur)}
+                className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-50 dark:bg-slate-800/50 hover:bg-[#C9A961]/10 border border-slate-200 dark:border-slate-700 text-[10px] font-medium transition-colors"
+                title={`Filtrer la carte sur ${s.label}`}
+              >
+                <span className="capitalize text-slate-700 dark:text-slate-200">{s.label}</span>
+                <span className="text-slate-500">·</span>
+                <span className="tabular-nums text-[#C9A961] font-semibold">{fmtEUR(s.totalHT)}</span>
+                <span className="text-[9px] text-slate-400">({s.count})</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
