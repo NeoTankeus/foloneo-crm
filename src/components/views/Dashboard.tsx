@@ -21,20 +21,22 @@ import {
 import { Card, Badge } from "@/components/ui/primitives";
 import { Stat } from "@/components/ui/overlays";
 import { ETAPES } from "@/lib/constants";
-import { calcCommissionMensuelle, caCommercialPeriode, monthBounds } from "@/lib/rem";
-import { fmtEUR, fmtPct, daysAgo, daysUntil, initials } from "@/lib/helpers";
+import { fmtEUR, fmtPct, daysAgo, daysUntil } from "@/lib/helpers";
 import { useAuth } from "@/hooks/useAuth";
 import { VarMap3D } from "./VarMap3D";
+import { RemindersWidget } from "./RemindersWidget";
+import { SalesRankingTable } from "./SalesRankingTable";
 import type { AppState, Settings } from "@/types";
 
 interface DashboardProps {
   state: AppState;
+  setState: React.Dispatch<React.SetStateAction<AppState>>;
   settings: Settings;
   commercialFilter: string | "all";
   periodFilter: "month" | "quarter" | "year" | "6months";
 }
 
-export function Dashboard({ state, settings, commercialFilter, periodFilter }: DashboardProps) {
+export function Dashboard({ state, setState, settings, commercialFilter, periodFilter }: DashboardProps) {
   // Les dirigeants ne veulent pas voir l'objectif de signature sur leur tableau
   // de bord (demande explicite Stephane). On masque l'etiquette, la courbe
   // pointillee et le pourcentage de progression dans le classement.
@@ -103,6 +105,15 @@ export function Dashboard({ state, settings, commercialFilter, periodFilter }: D
       const j = daysUntil(c.dateFin);
       return j <= 60 && j > 0;
     }).length;
+    // CA facture (total) et CA paye sur la periode — independent des deals
+    const facturesPeriode = invoices.filter(
+      (f) => new Date(f.dateEmission) >= periodStart
+    );
+    const caFactureHT = facturesPeriode.reduce((s, f) => s + f.montantHT, 0);
+    const caFactureTTC = facturesPeriode.reduce((s, f) => s + f.montantTTC, 0);
+    const caPayeHT = facturesPeriode
+      .filter((f) => f.status === "payee")
+      .reduce((s, f) => s + f.montantHT, 0);
     return {
       pipelineValeur,
       caSigne,
@@ -110,6 +121,10 @@ export function Dashboard({ state, settings, commercialFilter, periodFilter }: D
       devisARelancer,
       facturesRetard,
       contratsARenouveler,
+      caFactureHT,
+      caFactureTTC,
+      caPayeHT,
+      nbFactures: facturesPeriode.length,
     };
   }, [deals, quotes, invoices, state.contrats, periodStart]);
 
@@ -161,21 +176,6 @@ export function Dashboard({ state, settings, commercialFilter, periodFilter }: D
     [deals]
   );
 
-  // Classement commerciaux — utilise la grille de remuneration 2026
-  const ranking = useMemo(() => {
-    const { from, to } = monthBounds();
-    return state.commerciaux
-      .filter((c) => c.actif !== false)
-      .map((c) => {
-        const period = caCommercialPeriode(c.id, from, to, state, settings);
-        const rem = calcCommissionMensuelle(period.caTotal, settings.minimumGaranti);
-        const objectif = c.objectifMensuel || settings.objectifMensuelDefaut;
-        const progress = objectif > 0 ? period.caTotal / objectif : 0;
-        return { c, caMois: period.caTotal, progress, commission: rem.versement, nbAffaires: period.nbAffaires };
-      })
-      .sort((a, b) => b.caMois - a.caMois);
-  }, [state, settings]);
-
   // Alertes
   const alertes = useMemo(() => {
     const list: {
@@ -226,8 +226,8 @@ export function Dashboard({ state, settings, commercialFilter, periodFilter }: D
 
   return (
     <div className="space-y-4">
-      {/* KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* KPI (2 rangées sur mobile, 5 colonnes sur desktop) */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Stat
           label="Pipeline pondéré"
           value={fmtEUR(kpis.pipelineValeur)}
@@ -236,11 +236,18 @@ export function Dashboard({ state, settings, commercialFilter, periodFilter }: D
           sub={`${deals.filter((d) => d.etape !== "signe" && d.etape !== "perdu").length} affaires`}
         />
         <Stat
-          label="CA période"
+          label="CA signés"
           value={fmtEUR(kpis.caSigne)}
           icon={CheckCircle2}
           tone="emerald"
-          sub="signés"
+          sub="deals signés"
+        />
+        <Stat
+          label="CA facturé HT"
+          value={fmtEUR(kpis.caFactureHT)}
+          icon={Receipt}
+          tone="navy"
+          sub={`${kpis.nbFactures} facture${kpis.nbFactures > 1 ? "s" : ""} · ${fmtEUR(kpis.caPayeHT)} payés`}
         />
         <Stat
           label="Taux transfo"
@@ -357,47 +364,17 @@ export function Dashboard({ state, settings, commercialFilter, periodFilter }: D
           </div>
         </Card>
 
-        {/* Classement commerciaux */}
-        <Card className="p-4">
-          <h2 className="font-semibold text-sm mb-3">Classement du mois</h2>
-          <div className="space-y-2">
-            {ranking.length === 0 && (
-              <div className="text-xs text-slate-500">Aucun commercial actif</div>
-            )}
-            {ranking.map(({ c, caMois, progress, commission, nbAffaires }, i) => (
-              <div
-                key={c.id}
-                className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50"
-              >
-                <div className="w-5 text-xs font-bold text-slate-400">#{i + 1}</div>
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white flex-shrink-0"
-                  style={{ background: c.couleur }}
-                >
-                  {initials(c.prenom, c.nom)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold truncate">
-                    {c.prenom} {c.nom}
-                  </div>
-                  <div className="text-[10px] text-slate-500 tabular-nums">
-                    {fmtEUR(caMois)}
-                    {!hideObjectives && <> · {fmtPct(progress)}</>}
-                    {" · "}
-                    {nbAffaires} aff.
-                  </div>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <div className="text-xs font-semibold text-emerald-600 tabular-nums">
-                    {fmtEUR(commission)}
-                  </div>
-                  <div className="text-[9px] text-slate-400">à verser</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
+        {/* Widget Mes rappels */}
+        <RemindersWidget state={state} setState={setState} />
       </div>
+
+      {/* Tableau sortable du classement des ventes */}
+      <SalesRankingTable
+        state={state}
+        settings={settings}
+        commercialFilter={commercialFilter}
+        hideObjectives={hideObjectives}
+      />
 
       {/* Alertes actives */}
       {alertes.length > 0 && (

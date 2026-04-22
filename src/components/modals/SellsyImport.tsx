@@ -3,6 +3,7 @@ import { Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, ArrowRight } from
 import { Modal } from "@/components/ui/overlays";
 import { Button } from "@/components/ui/Button";
 import { Badge, Select } from "@/components/ui/primitives";
+import { ImportProgress, type ImportProgressState } from "@/components/ui/ImportProgress";
 import * as db from "@/lib/db";
 import { SECTEURS, SOURCES } from "@/lib/constants";
 import { useDemoData } from "@/lib/supabase";
@@ -307,6 +308,7 @@ export function SellsyImport({ open, onClose, onImported }: Props) {
   const [mapping, setMapping] = useState<Record<string, FieldKey>>({});
   const [defaultSource, setDefaultSource] = useState<Source>("ancien_client");
   const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState<ImportProgressState>({ done: 0, total: 0 });
   const [result, setResult] = useState<ImportResult | null>(null);
 
   const missingRaisonSociale = useMemo(
@@ -328,6 +330,7 @@ export function SellsyImport({ open, onClose, onImported }: Props) {
   async function doImport() {
     if (!file) return;
     setImporting(true);
+    setProgress({ done: 0, total: file.rows.length, current: "Préparation…" });
     const errors: string[] = [];
     let ok = 0;
     let skipped = 0;
@@ -346,6 +349,13 @@ export function SellsyImport({ open, onClose, onImported }: Props) {
     };
 
     for (let i = 0; i < file.rows.length; i++) {
+      // Mise a jour de la progression + yield pour laisser React re-render
+      setProgress({
+        done: i,
+        total: file.rows.length,
+        current: String(file.rows[i][Object.entries(mapping).find(([, f]) => f === "raisonSociale")?.[0] ?? ""] ?? `Ligne ${i + 1}`).slice(0, 80),
+      });
+      if (i % 5 === 0) await new Promise((r) => setTimeout(r, 0));
       const row = file.rows[i];
       const raisonSociale = getCol(row, "raisonSociale");
       if (!raisonSociale) {
@@ -523,6 +533,8 @@ export function SellsyImport({ open, onClose, onImported }: Props) {
     >
       {!file ? (
         <DropZone onFile={handleFile} />
+      ) : importing ? (
+        <ImportProgress state={progress} />
       ) : result ? (
         <ResultView result={result} onReset={reset} />
       ) : (

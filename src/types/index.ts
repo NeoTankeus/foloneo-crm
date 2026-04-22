@@ -172,6 +172,7 @@ export interface CalendarEvent {
   duree: number; // minutes
   lieu?: string;
   notes?: string;
+  done?: boolean; // utilise par le widget "rappels" du dashboard
 }
 
 export interface SavTicket {

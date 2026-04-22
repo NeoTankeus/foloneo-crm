@@ -13,18 +13,25 @@ const fromRow = (r: any): CalendarEvent => ({
   duree: Number(r.duree),
   lieu: r.lieu ?? undefined,
   notes: r.notes ?? undefined,
+  done: !!r.done,
 });
 
-const toRow = (e: Partial<CalendarEvent>): Record<string, unknown> => ({
-  type: e.type,
-  title: e.title,
-  account_id: e.accountId ?? null,
-  commercial_id: e.commercialId ?? null,
-  date: e.date,
-  duree: e.duree ?? 60,
-  lieu: e.lieu ?? null,
-  notes: e.notes ?? null,
-});
+const toRow = (e: Partial<CalendarEvent>): Record<string, unknown> => {
+  const row: Record<string, unknown> = {
+    type: e.type,
+    title: e.title,
+    account_id: e.accountId ?? null,
+    commercial_id: e.commercialId ?? null,
+    date: e.date,
+    duree: e.duree ?? 60,
+    lieu: e.lieu ?? null,
+    notes: e.notes ?? null,
+  };
+  // done est envoye uniquement si explicite, pour ne pas ecraser la valeur
+  // existante lors d'un update partiel qui ne touche pas au statut.
+  if (e.done !== undefined) row.done = e.done;
+  return row;
+};
 
 export async function listEvents(): Promise<CalendarEvent[]> {
   if (useDemoData || !supabase) return DEMO_STATE.events;

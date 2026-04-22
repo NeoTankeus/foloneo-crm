@@ -167,6 +167,7 @@ export default function App() {
             ) : view === "dashboard" ? (
               <Dashboard
                 state={state}
+                setState={setState}
                 settings={state.settings}
                 commercialFilter={commercialFilter}
                 periodFilter={periodFilter}

@@ -3,6 +3,7 @@ import { Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, ArrowRight, Info 
 import { Modal } from "@/components/ui/overlays";
 import { Button } from "@/components/ui/Button";
 import { Badge, Select } from "@/components/ui/primitives";
+import { ImportProgress, type ImportProgressState } from "@/components/ui/ImportProgress";
 import { useAuth } from "@/hooks/useAuth";
 import * as db from "@/lib/db";
 import { useDemoData } from "@/lib/supabase";
@@ -120,6 +121,7 @@ export function SellsyInvoiceImport({ open, accounts, onClose, onImported }: Pro
   const [file, setFile] = useState<ParsedFile | null>(null);
   const [mapping, setMapping] = useState<Record<string, FieldKey>>({});
   const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState<ImportProgressState>({ done: 0, total: 0 });
   const [result, setResult] = useState<ImportResult | null>(null);
 
   const missingRequired = useMemo(() => {
@@ -198,7 +200,12 @@ export function SellsyInvoiceImport({ open, accounts, onClose, onImported }: Pro
     const hasLibelle = mapped.includes("libelle");
     const hasPrixOuTotal = mapped.includes("prixUnitHT") || mapped.includes("totalLigneHT");
 
+    setProgress({ done: 0, total: groups.size, current: "Préparation…" });
+    let progressIdx = 0;
     for (const [numero, rows] of groups.entries()) {
+      progressIdx++;
+      setProgress({ done: progressIdx - 1, total: groups.size, current: `Facture ${numero}` });
+      if (progressIdx % 3 === 0) await new Promise((r) => setTimeout(r, 0));
       const firstRow = rows[0];
       const raisonSociale = getCol(firstRow, "raisonSociale");
       const dateEmission = parseDateAny(getCol(firstRow, "dateEmission"));
@@ -345,6 +352,8 @@ export function SellsyInvoiceImport({ open, accounts, onClose, onImported }: Pro
     >
       {!file ? (
         <DropZone onFile={handleFile} />
+      ) : importing ? (
+        <ImportProgress state={progress} />
       ) : result ? (
         <ResultView result={result} onReset={reset} />
       ) : (

@@ -3,6 +3,7 @@ import { Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, ArrowRight, Info 
 import { Modal } from "@/components/ui/overlays";
 import { Button } from "@/components/ui/Button";
 import { Badge, Select } from "@/components/ui/primitives";
+import { ImportProgress, type ImportProgressState } from "@/components/ui/ImportProgress";
 import { useAuth } from "@/hooks/useAuth";
 import * as db from "@/lib/db";
 import { useDemoData } from "@/lib/supabase";
@@ -111,6 +112,7 @@ export function SellsyQuoteImport({ open, accounts, onClose, onImported }: Props
   const [file, setFile] = useState<ParsedFile | null>(null);
   const [mapping, setMapping] = useState<Record<string, FieldKey>>({});
   const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState<ImportProgressState>({ done: 0, total: 0 });
   const [result, setResult] = useState<ImportResult | null>(null);
 
   const missingRequired = useMemo(() => {
@@ -168,6 +170,9 @@ export function SellsyQuoteImport({ open, accounts, onClose, onImported }: Props
     const importedQuotes: Quote[] = [];
     const newAccounts: Account[] = [];
 
+    // Init progress sur le nombre de devis uniques (groupes)
+    setProgress({ done: 0, total: stats.nbDevis || 1, current: "Préparation…" });
+
     // Pool de comptes qui grandit au fil de l'import pour eviter les doublons
     const accountsPool: Account[] = [...accounts];
 
@@ -202,7 +207,11 @@ export function SellsyQuoteImport({ open, accounts, onClose, onImported }: Props
     const hasPrixOuTotal = mapped.includes("prixUnitHT") || mapped.includes("totalLigneHT");
 
     // 3. Pour chaque groupe, construire header + lignes
+    let progressIdx = 0;
     for (const [numero, rows] of groups.entries()) {
+      progressIdx++;
+      setProgress({ done: progressIdx - 1, total: groups.size, current: `Devis ${numero}` });
+      if (progressIdx % 3 === 0) await new Promise((r) => setTimeout(r, 0));
       const firstRow = rows[0];
       const firstLineNum = (firstRowIdx.get(numero) ?? 0) + 2; // +1 pour header, +1 pour offset
 
@@ -358,6 +367,8 @@ export function SellsyQuoteImport({ open, accounts, onClose, onImported }: Props
     >
       {!file ? (
         <DropZone onFile={handleFile} />
+      ) : importing ? (
+        <ImportProgress state={progress} />
       ) : result ? (
         <ResultView result={result} onReset={reset} />
       ) : (
