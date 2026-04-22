@@ -129,9 +129,26 @@ export function Dashboard({ state, setState, settings, commercialFilter, periodF
   }, [deals, quotes, invoices, state.contrats, periodStart]);
 
   // Chart CA 6 derniers mois
+  // Source de verite : les factures (invoices), qui incluent les imports Sellsy
+  // et seront automatiquement alimentees par les nouvelles factures creees.
+  // Les deals signes sont une metrique commerciale (signature), les factures
+  // sont la metrique financiere reelle (facturation) — c'est celle-la qu'on
+  // veut pour l'Evolution du CA.
+  //
+  // Deux series affichees :
+  //  - ca : total facture HT du mois
+  //  - caPaye : portion effectivement payee (status = payee OU datePaiement)
+  //  - objectif : cible mensuelle (ligne pointillee)
   const chartData = useMemo(() => {
     const now = new Date();
-    const months: { label: string; ca: number; objectif: number; start: Date; end: Date }[] = [];
+    const months: {
+      label: string;
+      ca: number;
+      caPaye: number;
+      objectif: number;
+      start: Date;
+      end: Date;
+    }[] = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const start = new Date(d);
@@ -139,19 +156,23 @@ export function Dashboard({ state, setState, settings, commercialFilter, periodF
       months.push({
         label: d.toLocaleDateString("fr-FR", { month: "short" }),
         ca: 0,
+        caPaye: 0,
         objectif: 0,
         start,
         end,
       });
     }
-    // CA depuis deals signes
-    deals
-      .filter((d) => d.etape === "signe")
-      .forEach((d) => {
-        const dt = new Date(d.createdAt);
-        const m = months.find((mm) => dt >= mm.start && dt < mm.end);
-        if (m) m.ca += d.valeur;
-      });
+    // CA depuis invoices (date d'emission -> mois). Filtre par commercial si demande.
+    invoices.forEach((f) => {
+      if (commercialFilter !== "all" && f.commercialId !== commercialFilter) return;
+      const dt = new Date(f.dateEmission);
+      const m = months.find((mm) => dt >= mm.start && dt < mm.end);
+      if (!m) return;
+      m.ca += f.montantHT;
+      if (f.status === "payee" || f.datePaiement) {
+        m.caPaye += f.montantHT;
+      }
+    });
     // Objectif : somme des objectifs mensuels des commerciaux filtres
     const commerciauxConcernes =
       commercialFilter === "all"
@@ -163,7 +184,7 @@ export function Dashboard({ state, setState, settings, commercialFilter, periodF
     );
     months.forEach((m) => (m.objectif = objectifMensuel));
     return months;
-  }, [deals, state.commerciaux, commercialFilter]);
+  }, [invoices, state.commerciaux, commercialFilter]);
 
   // Pipeline par etape
   const pipelineByEtape = useMemo(
@@ -269,7 +290,7 @@ export function Dashboard({ state, setState, settings, commercialFilter, periodF
         {/* Chart CA vs objectif */}
         <Card className="p-4 lg:col-span-2">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-sm">Évolution du CA · 6 derniers mois</h2>
+            <h2 className="font-semibold text-sm">Évolution du CA facturé · 6 derniers mois</h2>
             {!hideObjectives && (
               <Badge tone="gold">Objectif mensuel : {fmtEUR(chartData[0]?.objectif ?? 0)}</Badge>
             )}
@@ -304,7 +325,15 @@ export function Dashboard({ state, setState, settings, commercialFilter, periodF
                   stroke="#C9A961"
                   strokeWidth={2}
                   fill="url(#gGold)"
-                  name="CA signé"
+                  name="CA facturé HT"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="caPaye"
+                  stroke="#10B981"
+                  strokeWidth={2}
+                  fill="none"
+                  name="CA encaissé HT"
                 />
                 {!hideObjectives && (
                   <Area

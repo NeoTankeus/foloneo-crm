@@ -45,6 +45,7 @@ import { CalendarView } from "@/components/views/Calendar";
 import { SavView } from "@/components/views/Sav";
 import { SettingsView } from "@/components/views/Settings";
 import { CommandPalette } from "@/components/layout/CommandPalette";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import type { Settings, Commercial } from "@/types";
 
 type PeriodFilter = "month" | "quarter" | "year" | "6months";
@@ -159,6 +160,7 @@ export default function App() {
 
           {/* pb-20 md:pb-0 : laisse la place pour la bottom-nav mobile (64px + safe-area) */}
           <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 md:pb-6">
+            <ErrorBoundary resetKey={view}>
             {loading ? (
               <div className="flex items-center justify-center h-full text-slate-500">
                 <RefreshCw size={16} className="animate-spin mr-2" />
@@ -202,6 +204,7 @@ export default function App() {
             ) : (
               <Placeholder view={view} />
             )}
+            </ErrorBoundary>
           </main>
         </div>
 
