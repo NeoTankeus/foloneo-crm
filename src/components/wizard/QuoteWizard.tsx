@@ -49,7 +49,10 @@ export function QuoteWizard({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Initialise le draft quand la modale s'ouvre
+  // Initialise le draft UNIQUEMENT quand la modale s'ouvre (false -> true)
+  // ou quand le devis cible change. On NE reset PAS si les autres props
+  // (settings, commerciaux, currentCommercial...) changent pendant la saisie,
+  // sinon l'utilisateur perd tout a chaque mise a jour d'etat parente.
   useEffect(() => {
     if (!open) return;
     (async () => {
@@ -79,7 +82,8 @@ export function QuoteWizard({
       }
       setError(null);
     })();
-  }, [open, quote, defaultAccountId, defaultDealId, currentCommercial, settings, state.commerciaux]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, quote]);
 
   const totaux = useMemo(
     () => (draft ? calcDevisTotaux(draft, settings, state.products) : null),

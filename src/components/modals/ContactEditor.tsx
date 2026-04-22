@@ -41,6 +41,8 @@ export function ContactEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Reset uniquement sur open/contact — sinon le form se reset a chaque
+  // changement d'accounts (import, refresh) et la saisie est perdue.
   useEffect(() => {
     if (contact) {
       const { id: _id, ...rest } = contact;
@@ -49,7 +51,8 @@ export function ContactEditor({
       setForm({ ...EMPTY, accountId: defaultAccountId ?? accounts[0]?.id ?? "" });
     }
     setError(null);
-  }, [contact, open, defaultAccountId, accounts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contact, open]);
 
   function patch<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((s) => ({ ...s, [k]: v }));

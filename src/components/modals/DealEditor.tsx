@@ -53,17 +53,19 @@ export function DealEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Re-initialisation UNIQUEMENT quand la modale s'ouvre ou change de cible.
+  // accounts/defaultAccountId dans les deps causaient un reset du formulaire a
+  // chaque changement d'etat (import, refresh), ce qui effacait la saisie en cours.
   useEffect(() => {
     if (deal) {
       const { id: _id, createdAt: _createdAt, ...rest } = deal;
       setForm(rest);
     } else {
-      // Option B : accountId laisse vide par defaut -> compte cree automatiquement
-      // a la sauvegarde. L'utilisateur peut toujours selectionner un compte existant.
       setForm({ ...EMPTY, accountId: defaultAccountId ?? "" });
     }
     setError(null);
-  }, [deal, open, defaultAccountId, accounts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deal, open]);
 
   const contactsForAccount = useMemo(
     () => contacts.filter((c) => c.accountId === form.accountId),

@@ -18,7 +18,12 @@ const DEFAULT_ZOOM = 10;
 const DEFAULT_PITCH = 45;
 const DEFAULT_BEARING = -15;
 
-type Tier = "signed" | "active" | "prospect";
+// Trois niveaux visuels :
+//  - signed : client avec au moins un devis signé ou une facture payée
+//  - active : client avec au moins un devis envoyé ou une facture en cours
+//  - client : client enregistré (importé depuis Sellsy ou source "ancien_client")
+// Le niveau "prospect" n'existe plus : un compte en base = un client.
+type Tier = "signed" | "active" | "client";
 
 type ClientMarker = {
   accountId: string;
@@ -40,18 +45,17 @@ type ClientMarker = {
   commercialNom?: string;
 };
 
-// Couleurs par niveau d'activite. Les comptes signes ressortent en or,
-// les comptes actifs (devis/facture en cours) en bleu, les prospects en gris.
+// Couleurs par niveau d'activite.
 const TIER_COLOR: Record<Tier, string> = {
   signed: "#C9A961",
   active: "#3B82F6",
-  prospect: "#94A3B8",
+  client: "#64748B",
 };
 
 const TIER_LABEL: Record<Tier, string> = {
   signed: "Signés",
   active: "Actifs",
-  prospect: "Prospects",
+  client: "Clients",
 };
 
 interface Props {
@@ -69,14 +73,16 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
   const [activeTiers, setActiveTiers] = useState<Record<Tier, boolean>>({
     signed: true,
     active: true,
-    prospect: true,
+    client: true,
   });
 
   // Agrege : tous les comptes avec lat/lng renseignes, avec stats rattachees.
   // Niveau du compte :
-  //  - signed : au moins un devis signe_achat/signe_leasing
+  //  - signed : au moins un devis signe_achat/signe_leasing OU facture payee
   //  - active : au moins un devis envoye OU une facture
-  //  - prospect : compte en base uniquement (pas encore d'activite)
+  //  - client : compte enregistre sans activite courante (tous les comptes
+  //    importes de Sellsy ou saisis manuellement le sont par defaut — ce
+  //    sont deja des clients)
   const markers = useMemo<ClientMarker[]>(() => {
     const out: ClientMarker[] = [];
     for (const acc of state.accounts) {
@@ -114,7 +120,7 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
       } else if (activeQuotes.length > 0 || accountInvoices.length > 0) {
         tier = "active";
       } else {
-        tier = "prospect";
+        tier = "client";
       }
 
       if (!activeTiers[tier]) continue;
@@ -282,7 +288,7 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
 
   // Stats globales affichees sous la carte
   const counts = useMemo(() => {
-    const byTier = { signed: 0, active: 0, prospect: 0 };
+    const byTier = { signed: 0, active: 0, client: 0 };
     let totalSigned = 0;
     let totalInvoiced = 0;
     for (const m of markers) {
@@ -336,7 +342,7 @@ export function VarMap3D({ state, settings, commercialFilter }: Props) {
 
         {/* Toggles tiers (en haut a droite de la carte, sous la nav MapLibre) */}
         <div className="absolute top-2 right-12 z-10 flex flex-col gap-1">
-          {(["signed", "active", "prospect"] as const).map((t) => (
+          {(["signed", "active", "client"] as const).map((t) => (
             <button
               key={t}
               onClick={() => toggleTier(t)}
@@ -404,7 +410,7 @@ function buildPopupHtml(m: ClientMarker): string {
     );
   }
   if (rows.length === 0) {
-    rows.push(`<div style="color:#64748B; font-style:italic;">Aucune activité enregistrée</div>`);
+    rows.push(`<div style="color:#64748B; font-style:italic;">Client enregistré — aucune activité courante</div>`);
   }
 
   const commercialLine = m.commercialNom

@@ -178,9 +178,12 @@ export interface AccountHints {
   siret?: string;
 }
 
-// Trouve un compte ou en cree un avec les infos disponibles (nom + eventuelles
-// coordonnees). Les comptes crees avec une adresse pourront ensuite etre
-// geolocalises par batch via /lib/geocode.
+// Trouve un compte existant ou en cree un nouveau.
+// - Creation : source "ancien_client" (ces clients viennent d'un historique
+//   Sellsy, ce ne sont pas des prospects).
+// - Si le compte existe deja mais certains champs sont vides, on les complete
+//   avec les hints du CSV (adresse, CP, ville, tel, email, SIRET) pour que la
+//   carte puisse les geolocaliser et que la fiche soit enrichie.
 export async function resolveOrCreateAccount(
   rawName: string,
   accounts: Account[],
@@ -188,13 +191,37 @@ export async function resolveOrCreateAccount(
 ): Promise<ResolvedAccount> {
   const name = (rawName ?? "").trim();
   if (!name) return null;
-  const existing = matchAccountByName(name, accounts);
-  if (existing) return { account: existing, created: false };
   const clean = (v?: string) => (v ?? "").trim();
+
+  const existing = matchAccountByName(name, accounts);
+  if (existing) {
+    // Completer les champs vides avec les hints (opportuniste, pas d'ecrasement)
+    const patch: Partial<Account> = {};
+    if (!existing.adresse?.trim() && clean(hints.adresse)) patch.adresse = clean(hints.adresse);
+    if (!existing.codePostal?.trim() && clean(hints.codePostal)) patch.codePostal = clean(hints.codePostal);
+    if (!existing.ville?.trim() && clean(hints.ville)) patch.ville = clean(hints.ville);
+    if (!existing.telephone && clean(hints.telephone)) patch.telephone = clean(hints.telephone);
+    if (!existing.email && clean(hints.email)) patch.email = clean(hints.email);
+    if (!existing.siret && clean(hints.siret)) patch.siret = clean(hints.siret);
+    if (Object.keys(patch).length > 0) {
+      try {
+        const updated = await db.updateAccount(existing.id, patch);
+        // Mettre a jour l'element du pool pour les iterations suivantes
+        const idx = accounts.indexOf(existing);
+        if (idx >= 0) accounts[idx] = updated;
+        return { account: updated, created: false };
+      } catch {
+        // Si l'update echoue, on renvoie l'existant tel quel
+      }
+    }
+    return { account: existing, created: false };
+  }
+
+  // Nouveau compte : marque comme ancien client (historique Sellsy)
   const created = await db.createAccount({
     raisonSociale: name,
     secteur: "tertiaire",
-    source: "partenaire",
+    source: "ancien_client",
     adresse: clean(hints.adresse),
     codePostal: clean(hints.codePostal),
     ville: clean(hints.ville),

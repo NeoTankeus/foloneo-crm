@@ -42,6 +42,8 @@ export function ContractEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Reset uniquement sur open/contract — sinon changement d'accounts en
+  // background reinitialise le formulaire et fait perdre la saisie.
   useEffect(() => {
     if (contract) {
       const { id: _id, ...rest } = contract;
@@ -50,7 +52,8 @@ export function ContractEditor({
       setForm({ ...EMPTY, accountId: defaultAccountId ?? accounts[0]?.id ?? "" });
     }
     setError(null);
-  }, [contract, open, defaultAccountId, accounts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contract, open]);
 
   function patch<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((s) => ({ ...s, [k]: v }));
