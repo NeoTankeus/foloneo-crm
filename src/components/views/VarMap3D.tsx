@@ -55,8 +55,11 @@ const TIER_COLOR: Record<Tier, string> = {
   client:  "#94A3B8",   // gris  — client enregistre, aucune activite
 };
 
+// Pour l'utilisateur, "signe" et "facture" c'est la meme chose : un client
+// acquis. On utilise le label metier "Signés" meme si la cle technique reste
+// "facture" (= l'account a au moins une facture emise).
 const TIER_LABEL: Record<Tier, string> = {
-  facture: "Facturés",
+  facture: "Signés",
   devis:   "Devis",
   pipeline:"Pipeline",
   client:  "Clients",
@@ -316,22 +319,41 @@ export function VarMap3D({ state, settings, commercialFilter, geocoderStatus }: 
     return { byTier, totalSigned, totalInvoiced, total: markers.length };
   }, [markers]);
 
-  // Top secteurs : quels secteurs concentrent le plus de signatures (factures+devis signes)
+  // Signatures par secteur / par ville : nombre de clients signes (tier facture)
+  // concentres dans chaque axe. Utile pour voir ou se trouvent les gros paquets
+  // de clients.
   const topSecteurs = useMemo(() => {
-    const bySecteur = new Map<string, { count: number; totalHT: number; label: string }>();
+    const bySecteur = new Map<string, { count: number; label: string }>();
     for (const m of markers) {
       if (m.tier !== "facture") continue;
       const secteur = m.secteur ?? "autre";
       const label = SECTEURS.find((s) => s.id === secteur)?.label ?? secteur;
-      const cur = bySecteur.get(secteur) ?? { count: 0, totalHT: 0, label };
+      const cur = bySecteur.get(secteur) ?? { count: 0, label };
       cur.count++;
-      cur.totalHT += m.totalInvoicedHT;
       bySecteur.set(secteur, cur);
     }
     return [...bySecteur.entries()]
       .map(([id, v]) => ({ id, ...v }))
-      .sort((a, b) => b.totalHT - a.totalHT)
-      .slice(0, 5);
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+  }, [markers]);
+
+  const topVilles = useMemo(() => {
+    const byVille = new Map<string, { count: number }>();
+    for (const m of markers) {
+      if (m.tier !== "facture") continue;
+      // Extraction du nom de ville (champ m.ville = "83000 Toulon" -> "Toulon")
+      const villeRaw = m.ville ?? "";
+      const parts = villeRaw.split(/\s+/).filter((p) => !/^\d+$/.test(p));
+      const ville = parts.join(" ").trim() || "—";
+      const cur = byVille.get(ville) ?? { count: 0 };
+      cur.count++;
+      byVille.set(ville, cur);
+    }
+    return [...byVille.entries()]
+      .map(([ville, v]) => ({ ville, ...v }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
   }, [markers]);
 
   function toggleTier(t: Tier) {
@@ -436,44 +458,62 @@ export function VarMap3D({ state, settings, commercialFilter, geocoderStatus }: 
               </option>
             ))}
           </select>
-          {markers.length > 0 && (
+          {markers.length > 0 && counts.byTier.facture > 0 && (
             <div className="flex items-center gap-3 tabular-nums text-[11px]">
-              {counts.totalInvoiced > 0 && (
-                <span className="font-semibold text-blue-600">
-                  {fmtEUR(counts.totalInvoiced)} facturés
-                </span>
-              )}
-              {counts.totalSigned > 0 && counts.totalSigned !== counts.totalInvoiced && (
-                <span className="font-semibold text-[#C9A961]">
-                  {fmtEUR(counts.totalSigned)} signés
-                </span>
-              )}
+              <span className="font-semibold text-[#C9A961]">
+                {counts.byTier.facture} client{counts.byTier.facture > 1 ? "s" : ""} signé{counts.byTier.facture > 1 ? "s" : ""}
+              </span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Top secteurs signés (visible uniquement en mode "tous secteurs") */}
-      {sectorFilter === "all" && topSecteurs.length > 0 && !fullscreen && (
-        <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
-            Top secteurs facturés
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {topSecteurs.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setSectorFilter(s.id as Secteur)}
-                className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-50 dark:bg-slate-800/50 hover:bg-[#C9A961]/10 border border-slate-200 dark:border-slate-700 text-[10px] font-medium transition-colors"
-                title={`Filtrer la carte sur ${s.label}`}
-              >
-                <span className="capitalize text-slate-700 dark:text-slate-200">{s.label}</span>
-                <span className="text-slate-500">·</span>
-                <span className="tabular-nums text-[#C9A961] font-semibold">{fmtEUR(s.totalHT)}</span>
-                <span className="text-[9px] text-slate-400">({s.count})</span>
-              </button>
-            ))}
-          </div>
+      {/* Signatures par secteur / par ville (nb clients signes) */}
+      {!fullscreen && (topSecteurs.length > 0 || topVilles.length > 0) && (
+        <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
+          {topSecteurs.length > 0 && sectorFilter === "all" && (
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                Signatures par secteur
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {topSecteurs.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setSectorFilter(s.id as Secteur)}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-50 dark:bg-slate-800/50 hover:bg-[#C9A961]/10 border border-slate-200 dark:border-slate-700 text-[10px] font-medium transition-colors"
+                    title={`Filtrer la carte sur ${s.label}`}
+                  >
+                    <span className="capitalize text-slate-700 dark:text-slate-200">{s.label}</span>
+                    <span className="text-[10px] tabular-nums font-bold text-[#C9A961]">
+                      {s.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {topVilles.length > 0 && (
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                Signatures par ville
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {topVilles.map((v) => (
+                  <div
+                    key={v.ville}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-[10px] font-medium"
+                  >
+                    <span className="text-slate-700 dark:text-slate-200">{v.ville}</span>
+                    <span className="text-[10px] tabular-nums font-bold text-[#C9A961]">
+                      {v.count}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
